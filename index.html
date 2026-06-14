@@ -1,275 +1,936 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>設備點班系統</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js"></script>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+  <title>8C神外病房－4號車點班</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <style>
-    body { background: #f0f4f8; }
-    .status-btn { transition: all .2s; }
-    .status-btn.selected-ok  { @apply bg-green-500 text-white border-green-500; }
-    .status-btn.selected-err { @apply bg-red-500   text-white border-red-500;   }
-    canvas#sigCanvas { touch-action: none; }
+    *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+    body{background:#F5F0FF;font-family:'Noto Sans TC','PingFang TC',system-ui,sans-serif;}
+    input,button{font-family:inherit;}
   </style>
 </head>
-<body class="min-h-screen py-8 px-4">
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect } = React;
 
-  <!-- ── 標題卡 ── -->
-  <div class="max-w-2xl mx-auto mb-6 text-center">
-    <h1 class="text-3xl font-bold text-gray-800 tracking-wide">🛠️ 設備點班系統</h1>
-    <p id="nowTime" class="text-sm text-gray-500 mt-1"></p>
-  </div>
+// ─── Storage (localStorage for standalone HTML) ───────────────────────────────
+const STORAGE_KEY = "ward_check_records_v4";
+function loadRecords() {
+  try { const r = localStorage.getItem(STORAGE_KEY); return r ? JSON.parse(r) : []; }
+  catch { return []; }
+}
+function saveRecords(recs) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(recs)); } catch {}
+}
 
-  <form id="shiftForm" class="max-w-2xl mx-auto space-y-4" onsubmit="return false;">
 
-    <!-- ── 班別 / 人員 ── -->
-    <div class="bg-white rounded-2xl shadow p-5 grid grid-cols-2 gap-4">
-      <div>
-        <label class="block text-xs font-semibold text-gray-500 mb-1">班別</label>
-        <select id="shift" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
-          <option value="早班">早班</option>
-          <option value="中班">中班</option>
-          <option value="晚班">晚班</option>
-        </select>
-      </div>
-      <div>
-        <label class="block text-xs font-semibold text-gray-500 mb-1">點班人員</label>
-        <input id="operator" type="text" placeholder="請輸入姓名"
-          class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
-      </div>
-    </div>
+// ─── Bed layout ───────────────────────────────────────────────────────────────
+const TRIPLE_ROOMS = [1, 2, 20, 21];
+const SINGLE_ROOMS = [3, 5, 6, 17, 18, 19, 22];
+const ROOM_CONFIG  = [];
+for (let r = 1; r <= 22; r++) {
+  if ([4,14].includes(r)) continue;
+  if (TRIPLE_ROOMS.includes(r)) { ROOM_CONFIG.push({ room: r, subs: ["1","2","3"] }); continue; }
+  if (SINGLE_ROOMS.includes(r)) { ROOM_CONFIG.push({ room: r, subs: [""]         }); continue; }
+  ROOM_CONFIG.push({ room: r, subs: ["1","2"] });
+}
+const ALL_BEDS = [];
+ROOM_CONFIG.forEach(({ room, subs }) => subs.forEach(s => ALL_BEDS.push(s ? `${room}-${s}` : `${room}`)));
 
-    <!-- ── 設備清單 ── -->
-    <div class="bg-white rounded-2xl shadow p-5">
-      <h2 class="text-base font-bold text-gray-700 mb-4">📋 設備清單</h2>
-      <div id="equipList" class="space-y-3"></div>
-    </div>
-
-    <!-- ── 整體備註 ── -->
-    <div class="bg-white rounded-2xl shadow p-5">
-      <label class="block text-xs font-semibold text-gray-500 mb-1">整體備註</label>
-      <textarea id="generalNote" rows="3" placeholder="如有異常請詳述…"
-        class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"></textarea>
-    </div>
-
-    <!-- ── 簽名 ── -->
-    <div class="bg-white rounded-2xl shadow p-5">
-      <div class="flex items-center justify-between mb-2">
-        <span class="text-xs font-semibold text-gray-500">點班人員簽名</span>
-        <button type="button" onclick="clearSig()"
-          class="text-xs text-red-400 hover:text-red-600 underline">清除</button>
-      </div>
-      <div class="border rounded-xl overflow-hidden bg-gray-50">
-        <canvas id="sigCanvas" class="w-full" height="160"></canvas>
-      </div>
-    </div>
-
-    <!-- ── 送出按鈕 ── -->
-    <button type="button" onclick="submitForm()"
-      class="w-full bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold py-3 rounded-2xl shadow text-base transition-all">
-      ✅ 送出點班紀錄
-    </button>
-
-  </form>
-
-  <!-- ── 成功 Modal ── -->
-  <div id="successModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
-    <div class="bg-white rounded-2xl shadow-xl p-8 mx-6 text-center max-w-sm w-full">
-      <div class="text-5xl mb-3">🎉</div>
-      <h2 class="text-xl font-bold text-gray-800 mb-1">點班成功！</h2>
-      <p class="text-sm text-gray-500 mb-6">紀錄已送出至 Google Sheets。</p>
-      <button onclick="closeModal()"
-        class="bg-blue-600 text-white px-8 py-2 rounded-xl hover:bg-blue-700 font-semibold">確認</button>
-    </div>
-  </div>
-
-  <!-- ── 錯誤 Toast ── -->
-  <div id="errToast" class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-red-600 text-white text-sm px-5 py-3 rounded-xl shadow-lg z-50 hidden"></div>
-
-<script>
-// ────────────────────────────────────────────
-// 0. GAS 端點
-// ────────────────────────────────────────────
-const GAS_URL = "https://script.google.com/macros/s/AKfycbxWtUyCuFy9b5a7BAgqlfAf8o4yZMOUbcs7D-mnU7x01-3i9Qeeu_2fdqgeURL8z1fp/exec";
-
-// ────────────────────────────────────────────
-// 1. 設備清單（可自行擴充）
-// ────────────────────────────────────────────
-const EQUIPMENT = [
-  "空壓機",
-  "輸送帶 A",
-  "輸送帶 B",
-  "注塑機 #1",
-  "注塑機 #2",
-  "冷卻水塔",
-  "廢水處理設備",
-  "消防偵煙系統",
-  "UPS 不斷電系統",
-  "監控攝影機組",
+// ─── Items ────────────────────────────────────────────────────────────────────
+// value shape:
+//   count_only: { count, loanCount, loanNote, note }
+//   split:      { count, beds, loanCount, loanNote, note }
+const ITEMS_CONFIG = [
+  { id: "blood_glucose", label: "血糖機",      icon: "🩸", type: "count_only", expected: 3, max: 3 },
+  { id: "urine_sg",      label: "尿比重計",    icon: "🧪", type: "count_only", expected: 1, max: 1 },
+  { id: "imec",          label: "I-MEC",       icon: "🖥️",  type: "split",     poolMax: 6  },
+  { id: "ekg12",         label: "12導程 EKG",  icon: "❤️",  type: "count_only", expected: 1, max: 1 },
+  { id: "ultrasound",    label: "100萬超音波",  icon: "🔊", type: "count_only", expected: 1, max: 1 },
+  { id: "oximeter_pink", label: "Oximeter 粉", icon: "💗", type: "split",     poolMax: 3  },
+  { id: "oximeter_blue", label: "Oximeter 藍", icon: "💙", type: "split",     poolMax: 2  },
+  { id: "syringe_pump",  label: "空針幫浦",    icon: "💉", type: "split",     poolMax: 1  },
 ];
 
-// ────────────────────────────────────────────
-// 2. 即時時間
-// ────────────────────────────────────────────
-function updateClock() {
-  const now = new Date();
-  document.getElementById("nowTime").textContent =
-    now.toLocaleString("zh-TW", { hour12: false });
+function defaultItems() {
+  const o = {};
+  ITEMS_CONFIG.forEach(c => { o[c.id] = { count:0, beds:[], loanCount:0, loanNote:"", note:"" }; });
+  return o;
 }
-updateClock();
-setInterval(updateClock, 1000);
-
-// ────────────────────────────────────────────
-// 3. 動態產生設備列
-// ────────────────────────────────────────────
-const listEl = document.getElementById("equipList");
-
-EQUIPMENT.forEach((name, i) => {
-  const row = document.createElement("div");
-  row.className = "flex flex-col sm:flex-row sm:items-center gap-2 border-b pb-3 last:border-0 last:pb-0";
-  row.innerHTML = `
-    <span class="flex-1 text-sm font-medium text-gray-700">${i + 1}. ${name}</span>
-    <div class="flex gap-2">
-      <button type="button"
-        class="status-btn border rounded-lg px-3 py-1 text-xs font-semibold text-gray-600"
-        data-idx="${i}" data-val="正常"
-        onclick="setStatus(${i},'正常',this)">✔ 正常</button>
-      <button type="button"
-        class="status-btn border rounded-lg px-3 py-1 text-xs font-semibold text-gray-600"
-        data-idx="${i}" data-val="故障"
-        onclick="setStatus(${i},'故障',this)">✖ 故障</button>
-    </div>
-    <input type="text" placeholder="備註"
-      id="note_${i}"
-      class="border rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 w-full sm:w-40" />
-  `;
-  listEl.appendChild(row);
-});
-
-// 狀態記錄
-const statusMap = {};
-function setStatus(idx, val, btn) {
-  statusMap[idx] = val;
-  // 重設同組按鈕
-  document.querySelectorAll(`[data-idx="${idx}"]`).forEach(b => {
-    b.classList.remove("selected-ok", "selected-err",
-      "bg-green-500","text-white","border-green-500",
-      "bg-red-500","border-red-500");
-    b.classList.add("text-gray-600");
+function itemsFromRecord(rec) {
+  const o = defaultItems();
+  (rec.items || []).forEach(it => {
+    if (it.id) o[it.id] = { loanCount:0, loanNote:"", beds:[], note:"", ...it.value };
   });
-  // 高亮選中
-  btn.classList.remove("text-gray-600");
-  if (val === "正常") {
-    btn.classList.add("bg-green-500","text-white","border-green-500");
-  } else {
-    btn.classList.add("bg-red-500","text-white","border-red-500");
-  }
+  return o;
 }
 
-// ────────────────────────────────────────────
-// 4. 簽名板
-// ────────────────────────────────────────────
-const canvas = document.getElementById("sigCanvas");
-// 讓 canvas 實際像素配合 CSS 寬度
-function resizeCanvas() {
-  const ratio = window.devicePixelRatio || 1;
-  const rect  = canvas.getBoundingClientRect();
-  canvas.width  = rect.width  * ratio;
-  canvas.height = canvas.height * ratio;  // height 固定 160 × ratio
-  canvas.getContext("2d").scale(ratio, ratio);
-  sigPad.clear();
+// effective limits after loanout deduction
+function effExpected(cfg, v) {
+  if (cfg.type === "count_only" && cfg.expected != null)
+    return Math.max(0, cfg.expected - (v.loanCount || 0));
+  return null;
 }
-const sigPad = new SignaturePad(canvas, { penColor: "#1e3a5f" });
-window.addEventListener("resize", resizeCanvas);
-// 初始化需稍候 DOM 計算完
-setTimeout(resizeCanvas, 100);
+function effPoolMax(cfg, v) {
+  if (cfg.type === "split")
+    return Math.max(0, cfg.poolMax - (v.loanCount || 0));
+  return cfg.poolMax;
+}
 
-function clearSig() { sigPad.clear(); }
+// ─── Shifts ───────────────────────────────────────────────────────────────────
+const SHIFTS      = ["白班", "小夜", "大夜"];
+const SHIFT_PREV  = { "白班": "大夜", "小夜": "白班", "大夜": "小夜" };
+const SHIFT_EMOJI = ["☀️", "🌙", "⭐"];
 
-// ────────────────────────────────────────────
-// 5. 送出
-// ────────────────────────────────────────────
-async function submitForm() {
-  // 驗證
-  const operator = document.getElementById("operator").value.trim();
-  if (!operator) return showErr("請填寫點班人員姓名");
+// ─── Palette ──────────────────────────────────────────────────────────────────
+const P = {
+  bg:"#F5F0FF", card:"#FFFFFF",
+  pri:"#7C5CBF", priL:"#EDE9FF", priD:"#5A3E9B",
+  teal:"#2DB9AA", tealL:"#E0FAF7",
+  coral:"#FF6B6B", coralL:"#FFF0F0",
+  mint:"#51CF66", mintL:"#EBFBEE",
+  amber:"#FCC419", amberL:"#FFF9DB",
+  orange:"#FF922B", orangeL:"#FFF4E6",
+  muted:"#9E9AB5", border:"#E4DEFF",
+  s0bg:"#EAF8FF", s0bd:"#4DABF7",
+  s1bg:"#FFF8E1", s1bd:"#FFA94D",
+  s2bg:"#F0E6FF", s2bd:"#9775FA",
+};
+const SBGS = [P.s0bg, P.s1bg, P.s2bg];
+const SBDS = [P.s0bd, P.s1bd, P.s2bd];
 
-  const allChecked = EQUIPMENT.every((_, i) => statusMap[i]);
-  if (!allChecked) return showErr("請為所有設備選擇狀態");
-
-  if (sigPad.isEmpty()) return showErr("請完成簽名後再送出");
-
-  // 組資料
-  const rows = EQUIPMENT.map((name, i) => ({
-    equipment: name,
-    status: statusMap[i],
-    note: document.getElementById(`note_${i}`).value.trim(),
-  }));
-
-  const payload = {
-    timestamp: new Date().toLocaleString("zh-TW", { hour12: false }),
-    shift:     document.getElementById("shift").value,
-    operator,
-    generalNote: document.getElementById("generalNote").value.trim(),
-    signature:   sigPad.toDataURL("image/png"),
-    items:       rows,
-  };
-
-  // 送出
-  const btn = document.querySelector("button[onclick='submitForm()']");
-  btn.disabled = true;
-  btn.textContent = "送出中…";
-
+// ─── Audio ────────────────────────────────────────────────────────────────────
+let _audioCtx = null;
+function getCtx() { if (!_audioCtx) _audioCtx = new (window.AudioContext||window.webkitAudioContext)(); return _audioCtx; }
+function beep(freq, type, dur, vol=0.18, delay=0) {
   try {
-    await fetch(GAS_URL, {
-      method: "POST",
-      mode:   "no-cors",          // GAS 需要 no-cors
-      headers: { "Content-Type": "application/json" },
-      body:   JSON.stringify(payload),
-    });
-    // no-cors 下無法讀取回應，視送出即成功
-    showSuccess();
-  } catch (e) {
-    showErr("網路錯誤，請稍後再試：" + e.message);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = "✅ 送出點班紀錄";
-  }
+    const ctx=getCtx(), o=ctx.createOscillator(), g=ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.type=type; o.frequency.value=freq;
+    const t=ctx.currentTime+delay;
+    g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+    o.start(t); o.stop(t+dur+0.01);
+  } catch {}
+}
+const SFX = {
+  tap:    ()=>beep(880,"sine",0.06,0.12),
+  toggle: ()=>beep(660,"sine",0.08,0.15),
+  plus:   ()=>beep(740,"triangle",0.07,0.14),
+  minus:  ()=>beep(440,"triangle",0.07,0.12),
+  bed:    ()=>beep(820,"sine",0.06,0.13),
+  error:  ()=>{[0,0.2,0.4].forEach(d=>beep(180,"square",0.15,0.25,d));},
+  success:()=>{[523,659,784,1046].forEach((f,i)=>beep(f,"sine",0.18,0.2,i*0.12));},
+  nav:    ()=>beep(600,"sine",0.05,0.1),
+  delete: ()=>beep(300,"sawtooth",0.1,0.2),
+  modal:  ()=>beep(440,"sine",0.1,0.15),
+  loan:   ()=>beep(550,"triangle",0.12,0.18),
+};
+
+// ─── Validation ───────────────────────────────────────────────────────────────
+function validate(items) {
+  const errors = [];
+  ITEMS_CONFIG.forEach(cfg => {
+    const v = items[cfg.id] || { count:0, beds:[], loanCount:0 };
+    const eff = effExpected(cfg, v);
+    const eMax = effPoolMax(cfg, v);
+    if (cfg.type === "count_only" && eff != null && (v.count||0) !== eff) {
+      const lc = v.loanCount||0;
+      errors.push({ id:cfg.id, msg:`【${cfg.label}】應有 ${eff} 台${lc>0?`（扣除外借 ${lc} 台）`:""}，現為 ${v.count||0} 台` });
+    }
+    if (cfg.type === "split") {
+      const tot = (v.count||0)+(v.beds?.length||0);
+      const lc = v.loanCount||0;
+      const suffix = lc>0?`（總上限 ${cfg.poolMax}，外借 ${lc} 台）`:"";
+      if (tot < eMax) errors.push({ id:cfg.id, msg:`【${cfg.label}】護理站 ${v.count||0} + 使用中 ${v.beds?.length||0} = ${tot}，尚差 ${eMax-tot} 台未交代${suffix}` });
+      if (tot > eMax) errors.push({ id:cfg.id, msg:`【${cfg.label}】共 ${tot} 台超過有效上限 ${eMax}${suffix}` });
+    }
+  });
+  return errors;
 }
 
-// ────────────────────────────────────────────
-// 6. UI 回饋
-// ────────────────────────────────────────────
-function showSuccess() {
-  document.getElementById("successModal").classList.remove("hidden");
+// ─── ShiftTag ─────────────────────────────────────────────────────────────────
+function ShiftTag({ shift }) {
+  const i = SHIFTS.indexOf(shift);
+  return <span style={{ background:SBGS[i], color:SBDS[i], border:`1.5px solid ${SBDS[i]}`, borderRadius:20, padding:"2px 10px", fontSize:12, fontWeight:700 }}>{SHIFT_EMOJI[i]} {shift}</span>;
 }
-function closeModal() {
-  document.getElementById("successModal").classList.add("hidden");
-  resetForm();
+
+// ─── Modal ────────────────────────────────────────────────────────────────────
+function Modal({ title, body, onClose, type="error" }) {
+  const col = type==="error"?P.coral:type==="warn"?P.amber:P.mint;
+  const bg  = type==="error"?P.coralL:type==="warn"?P.amberL:P.mintL;
+  const ico = type==="error"?"🧠💥":type==="warn"?"⚠️":"🎉";
+  useEffect(()=>{ SFX.modal(); },[]);
+  return (
+    <div style={{ position:"fixed",inset:0,background:"#2008",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:24 }}>
+      <div style={{ background:P.card,borderRadius:24,padding:28,maxWidth:400,width:"100%",boxShadow:"0 16px 48px #4004",border:`2px solid ${col}44` }}>
+        <div style={{ textAlign:"center",fontSize:52,marginBottom:8 }}>{ico}</div>
+        <div style={{ fontWeight:800,fontSize:18,color:col,textAlign:"center",marginBottom:14,lineHeight:1.3 }}>{title}</div>
+        <div style={{ background:bg,borderRadius:14,padding:14,marginBottom:18,border:`1px solid ${col}55` }}>
+          {typeof body==="string"?<p style={{ margin:0,fontSize:14,lineHeight:1.9 }}>{body}</p>:body}
+        </div>
+        <button onClick={()=>{ SFX.tap(); onClose(); }} style={{ width:"100%",padding:15,borderRadius:16,border:"none",background:col,color:"#fff",fontWeight:800,fontSize:16,cursor:"pointer" }}>我知道了 👍</button>
+      </div>
+    </div>
+  );
 }
-function resetForm() {
-  document.getElementById("operator").value = "";
-  document.getElementById("generalNote").value = "";
-  document.getElementById("shift").selectedIndex = 0;
-  EQUIPMENT.forEach((_, i) => {
-    delete statusMap[i];
-    document.getElementById(`note_${i}`).value = "";
-    document.querySelectorAll(`[data-idx="${i}"]`).forEach(b => {
-      b.classList.remove("bg-green-500","text-white","border-green-500",
-                         "bg-red-500","border-red-500");
-      b.classList.add("text-gray-600");
-    });
-  });
-  sigPad.clear();
+
+// ─── ConfirmModal ─────────────────────────────────────────────────────────────
+function ConfirmModal({ title, body, onConfirm, onCancel }) {
+  useEffect(()=>{ SFX.modal(); },[]);
+  return (
+    <div style={{ position:"fixed",inset:0,background:"#2008",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:24 }}>
+      <div style={{ background:P.card,borderRadius:24,padding:28,maxWidth:400,width:"100%",boxShadow:"0 16px 48px #4004" }}>
+        <div style={{ textAlign:"center",fontSize:48,marginBottom:8 }}>🗑️</div>
+        <div style={{ fontWeight:800,fontSize:18,color:P.coral,textAlign:"center",marginBottom:12 }}>{title}</div>
+        <p style={{ fontSize:14,color:P.muted,textAlign:"center",marginBottom:20 }}>{body}</p>
+        <div style={{ display:"flex",gap:10 }}>
+          <button onClick={()=>{ SFX.tap(); onCancel(); }} style={{ flex:1,padding:13,borderRadius:14,border:`2px solid ${P.border}`,background:P.card,color:P.muted,fontWeight:700,fontSize:15,cursor:"pointer" }}>取消</button>
+          <button onClick={()=>{ SFX.delete(); onConfirm(); }} style={{ flex:1,padding:13,borderRadius:14,border:"none",background:P.coral,color:"#fff",fontWeight:800,fontSize:15,cursor:"pointer" }}>確定刪除</button>
+        </div>
+      </div>
+    </div>
+  );
 }
-function showErr(msg) {
-  const t = document.getElementById("errToast");
-  t.textContent = "⚠️ " + msg;
-  t.classList.remove("hidden");
-  setTimeout(() => t.classList.add("hidden"), 3500);
+
+// ─── BedPicker ────────────────────────────────────────────────────────────────
+function BedPicker({ selected, onChange, remaining }) {
+  return (
+    <div>
+      <div style={{ fontSize:12,color:P.muted,marginBottom:6,display:"flex",alignItems:"center",gap:6 }}>
+        🛏 選擇使用床號
+        <span style={{ fontWeight:700,color:remaining<=0?P.coral:P.teal,background:remaining<=0?P.coralL:P.tealL,borderRadius:20,padding:"1px 8px",fontSize:11 }}>剩餘額度 {remaining}</span>
+      </div>
+      <div style={{ maxHeight:200,overflowY:"auto",background:P.bg,borderRadius:12,padding:"8px 6px",border:`1px solid ${P.border}` }}>
+        {ROOM_CONFIG.map(({ room, subs })=>(
+          <div key={room} style={{ display:"flex",alignItems:"center",flexWrap:"wrap",gap:4,marginBottom:5 }}>
+            <span style={{ fontSize:11,color:P.muted,width:30,textAlign:"right",flexShrink:0 }}>{room}室</span>
+            {subs.map(s=>{
+              const label=s?`${room}-${s}`:`${room}`;
+              const on=selected.includes(label), dis=!on&&remaining<=0;
+              return (
+                <button key={label} onClick={()=>{ if(dis)return; SFX.bed(); onChange(on?selected.filter(x=>x!==label):[...selected,label]); }}
+                  style={{ minWidth:46,height:34,borderRadius:10,fontSize:12,cursor:dis?"not-allowed":"pointer",
+                    border:`2px solid ${on?P.pri:P.border}`,background:on?P.pri:dis?"#F1EFF8":P.card,
+                    color:on?"#fff":dis?P.muted:"#333",fontWeight:on?700:400,opacity:dis?0.4:1,transition:"all .12s" }}>{label}</button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
+
+function cBtn(bg, color, disabled=false) {
+  return { width:36,height:36,borderRadius:9,background:disabled?"#eee":bg,color:disabled?P.muted:color,
+    border:`2px solid ${disabled?P.border:P.pri}`,fontWeight:800,fontSize:20,cursor:disabled?"not-allowed":"pointer",lineHeight:1,transition:"all .1s" };
+}
+
+// ─── LoanRow — inline loanout/repair control ──────────────────────────────────
+function LoanRow({ v, onChange, maxLoan }) {
+  const lc = v.loanCount || 0;
+  const showNote = lc > 0;
+  return (
+    <div style={{ background:P.orangeL, borderRadius:12, padding:"10px 12px", marginBottom:10, border:`1.5px solid ${P.orange}44` }}>
+      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom: showNote ? 8 : 0 }}>
+        <span style={{ fontSize:14 }}>🔄</span>
+        <span style={{ fontSize:13, fontWeight:700, color:P.orange, flex:1 }}>外借／維修台數</span>
+        <button onClick={()=>{ SFX.loan(); onChange({ ...v, loanCount:Math.max(0,lc-1), loanNote: lc-1===0?"":v.loanNote }); }}
+          style={cBtn(P.card, P.orange, lc===0)}>−</button>
+        <span style={{ fontWeight:900,fontSize:20,minWidth:26,textAlign:"center",color:lc>0?P.orange:P.muted }}>{lc}</span>
+        <button onClick={()=>{ SFX.loan(); onChange({ ...v, loanCount:Math.min(lc+1, maxLoan) }); }}
+          style={cBtn(P.orange, "#fff", lc>=maxLoan)}>+</button>
+      </div>
+      {showNote && (
+        <input
+          value={v.loanNote||""}
+          onChange={e=>onChange({ ...v, loanNote:e.target.value })}
+          placeholder="📋 說明（如：外借加護病房 / 維修中）"
+          style={{ width:"100%",padding:"7px 10px",borderRadius:9,border:`1.5px solid ${P.orange}88`,fontSize:12,
+            boxSizing:"border-box",outline:"none",fontFamily:"inherit",background:"#fff",color:"#5a3000" }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── SplitItemRow ─────────────────────────────────────────────────────────────
+function SplitItemRow({ cfg, value, onChange, hasError }) {
+  const v    = value || { count:0, beds:[], loanCount:0, loanNote:"", note:"" };
+  const eMax = effPoolMax(cfg, v);
+  const tot  = (v.count||0)+(v.beds?.length||0);
+  const diff = eMax - tot;
+  const bedRem = eMax - (v.count||0) - (v.beds?.length||0);
+
+  function setCount(n) { onChange({ ...v, count:Math.max(0,Math.min(n, eMax-(v.beds?.length||0))) }); }
+  function setBeds(beds) { onChange({ ...v, beds:beds.slice(0, eMax-(v.count||0)) }); }
+
+  const statusColor = diff===0?P.mint:P.coral;
+  const statusLabel = diff===0?`✓ 已全數交代 ${eMax} 台`:diff>0?`還差 ${diff} 台未交代`:`超出 ${-diff} 台`;
+
+  return (
+    <div style={{ background:hasError?P.coralL:P.card,borderRadius:16,padding:"14px 14px 10px",marginBottom:10,
+      border:`2px solid ${hasError?P.coral:P.border}`,boxShadow:"0 2px 8px #7C5CBF11" }}>
+
+      {/* Header */}
+      <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:10 }}>
+        <span style={{ fontSize:22 }}>{cfg.icon}</span>
+        <span style={{ flex:1,fontWeight:700,fontSize:15,color:"#2D2A4A" }}>{cfg.label}</span>
+        <span style={{ fontSize:12,fontWeight:700,padding:"3px 10px",borderRadius:20,
+          background:diff===0?P.mintL:P.coralL,color:statusColor,border:`1px solid ${statusColor}55` }}>
+          {statusLabel}
+        </span>
+      </div>
+
+      {/* Two-col: 護理站 + 使用中 */}
+      <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8 }}>
+        <div style={{ background:P.priL,borderRadius:12,padding:"10px 12px",border:`1px solid ${P.border}` }}>
+          <div style={{ fontSize:12,color:P.pri,fontWeight:700,marginBottom:8 }}>📦 數量（護理站）</div>
+          <div style={{ display:"flex",alignItems:"center",gap:8,justifyContent:"center" }}>
+            <button onClick={()=>{ SFX.minus(); setCount((v.count||0)-1); }} style={cBtn(P.card,P.pri,(v.count||0)===0)}>−</button>
+            <span style={{ fontWeight:900,fontSize:24,minWidth:28,textAlign:"center",color:P.pri }}>{v.count||0}</span>
+            <button onClick={()=>{ SFX.plus();  setCount((v.count||0)+1); }} style={cBtn(P.pri,P.card,bedRem<=0&&(v.count||0)>=eMax)}>+</button>
+          </div>
+          <div style={{ fontSize:11,color:P.muted,textAlign:"center",marginTop:5 }}>台放置護理站</div>
+        </div>
+        <div style={{ background:P.tealL,borderRadius:12,padding:"10px 12px",border:`1px solid ${P.teal}44` }}>
+          <div style={{ fontSize:12,color:P.teal,fontWeight:700,marginBottom:8 }}>🛏 使用中</div>
+          <div style={{ fontWeight:900,fontSize:24,textAlign:"center",color:P.teal,padding:"4px 0" }}>{v.beds?.length||0}</div>
+          <div style={{ fontSize:11,color:P.muted,textAlign:"center",marginTop:5 }}>床（點選床號）</div>
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      {(() => {
+        const pct = eMax>0?Math.min(tot/eMax,1):tot>0?1:0;
+        return (
+          <div style={{ marginBottom:10 }}>
+            <div style={{ height:8,background:P.bg,borderRadius:8,overflow:"hidden",border:`1px solid ${P.border}` }}>
+              <div style={{ height:"100%",width:`${pct*100}%`,background:statusColor,borderRadius:8,transition:"width .2s" }}/>
+            </div>
+            <div style={{ fontSize:11,marginTop:4,textAlign:"right",fontWeight:700,color:statusColor }}>
+              {tot} / {eMax} 台　{diff>0?`⚠ 還差 ${diff} 台`:diff<0?`⚠ 超出 ${-diff} 台`:"✓ 全數交代完畢"}
+            </div>
+          </div>
+        );
+      })()}
+
+      <BedPicker selected={v.beds||[]} onChange={setBeds} remaining={bedRem} />
+
+      {/* 外借／維修（較少使用，置於下方） */}
+      <div style={{ marginTop:10 }}>
+        <LoanRow v={v} onChange={onChange} maxLoan={cfg.poolMax} />
+      </div>
+
+      <input placeholder="📝 備註（選填）" value={v.note||""} onChange={e=>onChange({ ...v,note:e.target.value })}
+        style={{ width:"100%",marginTop:0,padding:"8px 12px",borderRadius:10,border:`1.5px solid ${P.border}`,
+          fontSize:13,boxSizing:"border-box",outline:"none",background:P.bg,fontFamily:"inherit" }}/>
+    </div>
+  );
+}
+
+// ─── CountOnlyRow ─────────────────────────────────────────────────────────────
+function CountOnlyRow({ cfg, value, onChange, hasError }) {
+  const v   = value || { count:0, loanCount:0, loanNote:"", note:"" };
+  const eff = effExpected(cfg, v);
+  const lc  = v.loanCount||0;
+  const mismatch = eff!=null && (v.count||0)!==eff;
+
+  return (
+    <div style={{ background:hasError?P.coralL:P.card,borderRadius:16,padding:"14px 14px 10px",marginBottom:10,
+      border:`2px solid ${hasError?P.coral:P.border}`,boxShadow:"0 2px 8px #7C5CBF11" }}>
+
+      {/* Header */}
+      <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:10 }}>
+        <span style={{ fontSize:22 }}>{cfg.icon}</span>
+        <span style={{ flex:1,fontWeight:700,fontSize:15,color:"#2D2A4A" }}>{cfg.label}</span>
+        {eff!=null && (
+          <span style={{ fontSize:12,fontWeight:700,padding:"3px 10px",borderRadius:20,
+            background:mismatch?P.coralL:P.mintL,color:mismatch?P.coral:P.mint,
+            border:`1px solid ${mismatch?P.coral:P.mint}55` }}>
+            應有 {eff} 台{lc>0?`（外借 ${lc}）`:""}
+          </span>
+        )}
+      </div>
+
+      {/* Counter */}
+      <div style={{ display:"flex",alignItems:"center",justifyContent:"center",gap:16,padding:"10px 0",marginBottom:8 }}>
+        <button onClick={()=>{ SFX.minus(); onChange({ ...v,count:Math.max(0,(v.count||0)-1) }); }} style={cBtn(P.card,P.pri,(v.count||0)===0)}>−</button>
+        <div style={{ textAlign:"center" }}>
+          <div style={{ fontWeight:900,fontSize:36,color:mismatch?P.coral:P.pri,lineHeight:1 }}>{v.count||0}</div>
+          <div style={{ fontSize:11,color:P.muted,marginTop:4 }}>台（實際在場）</div>
+        </div>
+        <button onClick={()=>{ SFX.plus(); onChange({ ...v,count:Math.min((v.count||0)+1,cfg.max||99) }); }} style={cBtn(P.pri,P.card)}>+</button>
+      </div>
+
+      {/* Status bar */}
+      {eff!=null && (
+        <div style={{ height:8,background:P.bg,borderRadius:8,overflow:"hidden",border:`1px solid ${P.border}`,marginBottom:10 }}>
+          <div style={{ height:"100%",width:`${Math.min((v.count||0)/Math.max(eff,1),1)*100}%`,
+            background:mismatch?P.coral:P.mint,borderRadius:8,transition:"width .2s" }}/>
+        </div>
+      )}
+
+      {/* 外借／維修（較少使用，置於下方） */}
+      <LoanRow v={v} onChange={onChange} maxLoan={cfg.expected||cfg.max||1} />
+
+      <input placeholder="📝 備註（選填）" value={v.note||""} onChange={e=>onChange({ ...v,note:e.target.value })}
+        style={{ width:"100%",marginTop:6,padding:"8px 12px",borderRadius:10,border:`1.5px solid ${P.border}`,
+          fontSize:13,boxSizing:"border-box",outline:"none",background:P.bg,fontFamily:"inherit" }}/>
+    </div>
+  );
+}
+
+// ─── SyncingOverlay ───────────────────────────────────────────────────────────
+function SyncingOverlay() {
+  return (
+    <div style={{ position:"fixed",inset:0,background:"#2D2A4Acc",zIndex:9998,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:20 }}>
+      <style>{`
+        @keyframes spin{to{transform:rotate(360deg)}}
+        @keyframes pulse2{0%,100%{opacity:1}50%{opacity:0.4}}
+      `}</style>
+      <div style={{ width:64,height:64,border:`6px solid #ffffff33`,borderTop:`6px solid #fff`,borderRadius:"50%",animation:"spin .9s linear infinite" }}/>
+      <div style={{ color:"#fff",fontWeight:800,fontSize:17,animation:"pulse2 1.5s ease-in-out infinite" }}>同步至雲端試算表中…</div>
+      <div style={{ color:"#ffffffaa",fontSize:13 }}>請稍候，勿關閉頁面</div>
+    </div>
+  );
+}
+
+// ─── CheckForm ────────────────────────────────────────────────────────────────
+function CheckForm({ records, onSave, onDone, onCancel, editRecord }) {
+  const today = new Date().toISOString().split("T")[0];
+  const [nurse,   setNurse]  = useState(editRecord?.nurse||"");
+  const [date,    setDate]   = useState(editRecord?.date||today);
+  const [shift,   setShift]  = useState(editRecord?.shift||null);
+  const [items,   setItems]  = useState(editRecord?itemsFromRecord(editRecord):defaultItems());
+  const [modal,   setModal]  = useState(null);
+  const [saving,  setSaving] = useState(false);
+  const [syncing, setSyncing]= useState(false);
+  const [carried, setCarried]= useState(false);
+  const [goAfter, setGoAfter]= useState(false); // 關閉成功 modal 後跳頁
+
+  function closeModal() {
+    if (goAfter) { setModal(null); onDone(); }
+    else setModal(null);
+  }
+  const isEdit = !!editRecord;
+
+  function pickShift(s) {
+    SFX.toggle(); setShift(s);
+    if (!isEdit) {
+      const prev = SHIFT_PREV[s];
+      const prevRec = [...records].filter(r=>r.shift===prev).sort((a,b)=>b.createdAt?.localeCompare(a.createdAt))[0];
+      if (prevRec) { setItems(itemsFromRecord(prevRec)); setCarried(true); setTimeout(()=>setCarried(false),3500); }
+    }
+  }
+
+  function handleChange(id, val) { setItems(p=>({ ...p,[id]:val })); }
+
+  async function submit() {
+    if (!nurse.trim()) { SFX.error(); setModal({ type:"error",title:"請填寫護理師姓名",body:"姓名欄位不能空白！" }); return; }
+    if (!shift)        { SFX.error(); setModal({ type:"error",title:"請選擇班別",body:"請先選擇本次點班的班別！" }); return; }
+    const errs = validate(items);
+    if (errs.length) {
+      SFX.error();
+      setModal({ type:"error",title:"數量異常，無法儲存 🧠",
+        body:<ul style={{ margin:0,paddingLeft:18,lineHeight:2,fontSize:14 }}>{errs.map((e,i)=><li key={i} style={{ color:P.coral }}>{e.msg}</li>)}</ul> });
+      return;
+    }
+
+    setSaving(true);
+    const record = {
+      id: isEdit?editRecord.id:Date.now(),
+      date, shift, nurse:nurse.trim(),
+      items: ITEMS_CONFIG.map(c=>({ id:c.id,label:c.label,value:items[c.id]||{ count:0,beds:[],loanCount:0,loanNote:"",note:"" } })),
+      createdAt: isEdit?editRecord.createdAt:new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    // ── Step 1: save locally ──
+    await onSave(record, isEdit);
+    SFX.success();
+    setSaving(false);
+
+    // ── Step 2: sync to Google Sheets ──
+    setSyncing(true);
+    try {
+      // Build clean payload for GAS
+      const payload = {
+        nurse: record.nurse,
+        date:  record.date,
+        shift: record.shift,
+        submittedAt: record.updatedAt,
+        isEdit,
+        items: record.items.map(it => {
+          const v = it.value;
+          const cfg = ITEMS_CONFIG.find(c=>c.id===it.id);
+          const total = cfg?.type==="split"
+            ? (v.count||0)+(v.beds?.length||0)
+            : (v.count||0);
+          const expected = cfg?.type==="split"
+            ? effPoolMax(cfg, v)
+            : effExpected(cfg, v);
+          return {
+            id:       it.id,
+            label:    it.label,
+            type:     cfg?.type,
+            count:    v.count||0,
+            beds:     v.beds?.join("、")||"",
+            loanCount:v.loanCount||0,
+            loanNote: v.loanNote||"",
+            note:     v.note||"",
+            total,
+            expected,
+            status:   total===expected?"正常":"異常",
+          };
+        }),
+      };
+
+      await fetch(GAS_URL, {
+        method: "POST",
+        mode: "no-cors",          // GAS 必須用 no-cors，無法讀 response
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify(payload),
+      });
+
+      setSyncing(false);
+      SFX.success();
+      setGoAfter(true);
+      setModal({ type:"success", title:"雲端同步成功 ☁️✅",
+        body:"點班資料已成功同步至雲端試算表！按確認返回紀錄頁面。" });
+    } catch (err) {
+      setSyncing(false);
+      SFX.error();
+      setModal({ type:"warn", title:"雲端同步失敗 ⚠️",
+        body:`資料已儲存於本機，但同步試算表時發生錯誤。\n（${err.message}）\n\n可稍後再試，或請通知資訊人員。` });
+    }
+  }
+
+  const errIds = new Set(shift?validate(items).map(e=>e.id):[]);
+
+  return (
+    <div style={{ paddingBottom:90 }}>
+      {syncing && <SyncingOverlay/>}
+      {modal && <Modal type={modal.type} title={modal.title} body={modal.body} onClose={closeModal}/>}
+
+      <div style={{ background:`linear-gradient(135deg,${P.pri} 0%,${P.teal} 100%)`,borderRadius:20,padding:"18px 20px",marginBottom:14,color:"#fff",boxShadow:`0 6px 20px ${P.pri}44` }}>
+        <div style={{ fontSize:28,marginBottom:4 }}>{isEdit?"✏️":"🧠"}</div>
+        <div style={{ fontWeight:900,fontSize:20 }}>{isEdit?"修改點班紀錄":"開始點班囉！"}</div>
+        <div style={{ fontSize:12,opacity:0.85,marginTop:2 }}>8C神外病房－4號車 · 共 {ALL_BEDS.length} 床</div>
+      </div>
+
+      <div style={{ background:P.card,borderRadius:18,padding:16,marginBottom:12,boxShadow:"0 2px 12px #7C5CBF18",border:`1px solid ${P.border}` }}>
+        <label style={lbl}>👩‍⚕️ 護理師姓名 <span style={{ color:P.coral }}>*</span></label>
+        <input value={nurse} onChange={e=>setNurse(e.target.value)} onClick={()=>SFX.tap()} placeholder="請輸入姓名" style={inp}/>
+
+        <label style={{ ...lbl,marginTop:12 }}>📅 日期</label>
+        <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={inp}/>
+
+        <label style={{ ...lbl,marginTop:12 }}>⏰ 班別 <span style={{ color:P.coral }}>*</span></label>
+        <div style={{ display:"flex",gap:8,marginTop:6 }}>
+          {SHIFTS.map((s,i)=>(
+            <button key={s} onClick={()=>pickShift(s)} style={{
+              flex:1,padding:"14px 0",borderRadius:14,fontWeight:700,fontSize:15,cursor:"pointer",
+              border:`2.5px solid ${shift===s?SBDS[i]:P.border}`,
+              background:shift===s?SBGS[i]:P.card, color:shift===s?SBDS[i]:P.muted,
+              transition:"all .15s",boxShadow:shift===s?`0 4px 12px ${SBDS[i]}44`:"none",
+            }}>{SHIFT_EMOJI[i]} {s}</button>
+          ))}
+        </div>
+        {carried && (
+          <div style={{ marginTop:10,padding:"9px 14px",background:"#E3FAFC",borderRadius:12,fontSize:13,color:"#0C8599",fontWeight:600,border:"1.5px solid #0C859944" }}>
+            ✨ 已帶入上一班紀錄，請確認後修改
+          </div>
+        )}
+      </div>
+
+      <div style={{ background:P.card,borderRadius:18,padding:"14px 14px 4px",boxShadow:"0 2px 12px #7C5CBF18",marginBottom:14,border:`1px solid ${P.border}` }}>
+        <div style={{ fontWeight:800,fontSize:16,color:P.pri,marginBottom:12,display:"flex",alignItems:"center",gap:8 }}>
+          <span style={{ background:P.priL,borderRadius:10,padding:"4px 10px" }}>📋 點班項目</span>
+          <span style={{ fontSize:12,color:P.muted,fontWeight:500 }}>如有外借請在各設備欄填寫</span>
+        </div>
+        {ITEMS_CONFIG.map(cfg=>
+          cfg.type==="split"
+            ?<SplitItemRow  key={cfg.id} cfg={cfg} value={items[cfg.id]} onChange={v=>handleChange(cfg.id,v)} hasError={errIds.has(cfg.id)}/>
+            :<CountOnlyRow  key={cfg.id} cfg={cfg} value={items[cfg.id]} onChange={v=>handleChange(cfg.id,v)} hasError={errIds.has(cfg.id)}/>
+        )}
+      </div>
+
+      <div style={{ position:"fixed",bottom:0,left:0,right:0,padding:"12px 16px",background:P.card,borderTop:`1px solid ${P.border}`,display:"flex",gap:10,zIndex:50 }}>
+        <button onClick={()=>{ SFX.tap(); onCancel(); }} style={{ flex:1,padding:14,borderRadius:14,border:`2px solid ${P.border}`,background:P.card,color:P.muted,fontWeight:700,fontSize:15,cursor:"pointer" }}>取消</button>
+        <button onClick={submit} disabled={saving||syncing} style={{ flex:2.5,padding:14,borderRadius:14,border:"none",
+          background:shift?`linear-gradient(135deg,${P.pri},${P.teal})`:P.muted,
+          color:"#fff",fontWeight:800,fontSize:16,cursor:(saving||syncing)?"not-allowed":"pointer",
+          opacity:(saving||syncing)?0.7:1,boxShadow:shift?`0 4px 14px ${P.pri}55`:"none" }}>
+          {saving?"儲存中…":syncing?"同步中…":isEdit?"✅ 儲存修改":"✅ 完成點班"}
+        </button>
+      </div>
+    </div>
+  );
+}
+const lbl = { fontSize:13,fontWeight:700,color:P.muted,display:"block" };
+const inp = { width:"100%",padding:"10px 14px",borderRadius:12,marginTop:4,border:`1.5px solid ${P.border}`,fontSize:15,boxSizing:"border-box",outline:"none",fontFamily:"inherit",background:P.bg };
+
+// ─── RecordCard ───────────────────────────────────────────────────────────────
+function RecordCard({ record, onDelete, onEdit }) {
+  const [open,    setOpen]    = useState(false);
+  const [confirm, setConfirm] = useState(false);
+
+  return (
+    <div style={{ background:P.card,borderRadius:18,marginBottom:12,boxShadow:"0 2px 10px #7C5CBF15",overflow:"hidden",border:`1px solid ${P.border}` }}>
+      {confirm && <ConfirmModal title="確定要刪除嗎？" body="刪除後無法復原，請確認。"
+        onConfirm={()=>{ setConfirm(false); onDelete(record.id); }} onCancel={()=>setConfirm(false)}/>}
+
+      <div onClick={()=>{ SFX.tap(); setOpen(o=>!o); }} style={{ padding:"13px 16px",display:"flex",alignItems:"center",gap:10,cursor:"pointer" }}>
+        <div style={{ flex:1 }}>
+          <div style={{ fontWeight:700,fontSize:15,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap" }}>
+            {record.nurse} <ShiftTag shift={record.shift}/>
+            {record.updatedAt&&record.updatedAt!==record.createdAt&&(
+              <span style={{ fontSize:10,color:P.muted,background:P.bg,borderRadius:10,padding:"1px 6px" }}>已修改</span>
+            )}
+          </div>
+          <div style={{ fontSize:12,color:P.muted,marginTop:2,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap" }}>
+            📅 {record.date}
+            {(record.items||[]).filter(it=>(it.value?.loanCount||0)>0).length>0&&(
+              <span style={{ background:P.orangeL,color:P.orange,border:`1px solid ${P.orange}55`,borderRadius:12,padding:"1px 7px",fontSize:11,fontWeight:700 }}>
+                🔄 外借/維修 {(record.items||[]).filter(it=>(it.value?.loanCount||0)>0).length} 項
+              </span>
+            )}
+          </div>
+        </div>
+        <span style={{ color:P.muted,fontSize:18 }}>{open?"▲":"▼"}</span>
+      </div>
+
+      {open && (
+        <div style={{ borderTop:`1px solid ${P.border}`,padding:"12px 16px" }}>
+
+          {/* Items — one row per item, all info inline */}
+          {record.items.map(it=>{
+            const v=it.value;
+            const lc=v.loanCount||0;
+            const hasSomething=(v.count||0)>0||(v.beds?.length||0)>0||lc>0||v.note;
+            if (!hasSomething) return null;
+            const cfg=ITEMS_CONFIG.find(c=>c.id===it.id);
+            return (
+              <div key={it.id} style={{ display:"flex",alignItems:"center",gap:6,padding:"7px 0",borderBottom:`1px solid ${P.border}`,flexWrap:"wrap" }}>
+                {/* Icon + label */}
+                <span style={{ fontSize:15 }}>{cfg?.icon}</span>
+                <span style={{ fontWeight:700,fontSize:13,minWidth:90 }}>{it.label}</span>
+                {/* 護理站數量 */}
+                {cfg?.type==="count_only"&&(
+                  <span style={{ color:P.pri,fontWeight:700,background:P.priL,borderRadius:10,padding:"2px 9px",fontSize:12 }}>
+                    在場 {v.count||0} 台
+                  </span>
+                )}
+                {/* split: 護理站 + 使用床 */}
+                {cfg?.type==="split"&&(v.count||0)>0&&(
+                  <span style={{ color:P.pri,fontWeight:700,background:P.priL,borderRadius:10,padding:"2px 9px",fontSize:12 }}>
+                    📦 {v.count} 台
+                  </span>
+                )}
+                {v.beds?.length>0&&(
+                  <span style={{ color:P.teal,fontWeight:700,background:P.tealL,borderRadius:10,padding:"2px 9px",fontSize:12 }}>
+                    🛏 {v.beds.join("、")}
+                  </span>
+                )}
+                {/* 外借／維修 */}
+                {lc>0&&(
+                  <span style={{ color:P.orange,fontWeight:700,background:P.orangeL,borderRadius:10,padding:"2px 9px",fontSize:12,display:"flex",alignItems:"center",gap:3 }}>
+                    🔄 外借/維修 {lc} 台{v.loanNote?` · ${v.loanNote}`:""}
+                  </span>
+                )}
+                {/* 備註 */}
+                {v.note&&(
+                  <span style={{ color:P.coral,fontSize:11,background:P.coralL,borderRadius:10,padding:"2px 8px" }}>
+                    📝 {v.note}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+
+          <div style={{ display:"flex",gap:8,marginTop:12 }}>
+            <button onClick={()=>{ SFX.tap(); onEdit(record); }} style={{ flex:1,padding:"10px 0",borderRadius:12,border:`2px solid ${P.pri}`,background:P.priL,color:P.pri,fontWeight:700,fontSize:14,cursor:"pointer" }}>✏️ 修改</button>
+            <button onClick={()=>{ SFX.tap(); setConfirm(true); }} style={{ flex:1,padding:"10px 0",borderRadius:12,border:`2px solid ${P.coral}`,background:P.coralL,color:P.coral,fontWeight:700,fontSize:14,cursor:"pointer" }}>🗑️ 刪除</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── History ──────────────────────────────────────────────────────────────────
+function History({ records, onDelete, onEdit }) {
+  const sorted = [...records].sort((a,b)=>b.createdAt?.localeCompare(a.createdAt));
+  if (!sorted.length) return (
+    <div style={{ textAlign:"center",padding:48 }}>
+      <div style={{ fontSize:64,marginBottom:12 }}>🧠</div>
+      <div style={{ color:P.muted,fontSize:16,fontWeight:600 }}>尚無點班紀錄</div>
+    </div>
+  );
+  return <div>{sorted.map(r=><RecordCard key={r.id} record={r} onDelete={onDelete} onEdit={onEdit}/>)}</div>;
+}
+
+// ─── Reports ──────────────────────────────────────────────────────────────────
+function getWeekRange(off=0) {
+  const n=new Date(),m=new Date(n); m.setDate(n.getDate()-((n.getDay()+6)%7)+off*7);
+  const s=new Date(m); s.setDate(m.getDate()+6);
+  return [m.toISOString().split("T")[0],s.toISOString().split("T")[0]];
+}
+function getMonthRange(off=0) {
+  const n=new Date(),y=n.getFullYear(),mo=n.getMonth()+off;
+  return [new Date(y,mo,1).toISOString().split("T")[0],new Date(y,mo+1,0).toISOString().split("T")[0]];
+}
+function Reports({ records }) {
+  const [mode,setMode]=useState("week");
+  const [wOff,setWOff]=useState(0);
+  const [mOff,setMOff]=useState(0);
+  const [from,to]=mode==="week"?getWeekRange(wOff):getMonthRange(mOff);
+  const filtered=records.filter(r=>r.date>=from&&r.date<=to);
+  const byShift={};
+  SHIFTS.forEach(s=>{ byShift[s]=filtered.filter(r=>r.shift===s).length; });
+  const stats={};
+  ITEMS_CONFIG.forEach(c=>{ stats[c.id]={ label:c.label,icon:c.icon,totalCnt:0,totalBeds:0,totalLoaned:0,abnormal:0,notes:[] }; });
+  filtered.forEach(rec=>rec.items.forEach(it=>{
+    const s=stats[it.id]; if(!s)return;
+    const v=it.value,cfg=ITEMS_CONFIG.find(c=>c.id===it.id);
+    s.totalCnt+=v.count||0; s.totalBeds+=v.beds?.length||0; s.totalLoaned+=v.loanCount||0;
+    if(cfg?.type==="count_only"&&cfg.expected!=null&&(v.count||0)!==(cfg.expected-(v.loanCount||0))) s.abnormal++;
+    if(cfg?.type==="split"&&(v.count||0)+(v.beds?.length||0)!==(cfg.poolMax-(v.loanCount||0))) s.abnormal++;
+    if(v.note) s.notes.push(v.note);
+  }));
+  const bedFreq={};
+  filtered.forEach(rec=>rec.items.forEach(it=>(it.value?.beds||[]).forEach(b=>{ bedFreq[b]=(bedFreq[b]||0)+1; })));
+  const topBeds=Object.entries(bedFreq).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const navBtn={ width:36,height:36,borderRadius:10,border:`1.5px solid ${P.border}`,background:P.card,fontWeight:700,fontSize:18,cursor:"pointer",color:P.pri };
+  const label=()=>{ if(mode==="week")return `${from} ～ ${to}`; const d=new Date(from); return `${d.getFullYear()} 年 ${d.getMonth()+1} 月`; };
+  return (
+    <div>
+      <div style={{ display:"flex",gap:10,marginBottom:14 }}>
+        {[["week","📅 週報表"],["month","📆 月報表"]].map(([m,lb])=>(
+          <button key={m} onClick={()=>{ SFX.nav(); setMode(m); }} style={{ flex:1,padding:"12px 0",borderRadius:14,fontWeight:700,fontSize:14,cursor:"pointer",
+            border:`2px solid ${mode===m?P.pri:P.border}`,background:mode===m?P.pri:P.card,color:mode===m?"#fff":P.muted,
+            boxShadow:mode===m?`0 4px 12px ${P.pri}44`:"none" }}>{lb}</button>
+        ))}
+      </div>
+      <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:14,background:P.card,borderRadius:14,padding:"10px 14px",boxShadow:"0 1px 6px #7C5CBF15",border:`1px solid ${P.border}` }}>
+        <button onClick={()=>{ SFX.nav(); mode==="week"?setWOff(o=>o-1):setMOff(o=>o-1); }} style={navBtn}>‹</button>
+        <span style={{ flex:1,textAlign:"center",fontWeight:700,fontSize:14,color:P.pri }}>{label()}</span>
+        <button onClick={()=>{ SFX.nav(); mode==="week"?setWOff(o=>o+1):setMOff(o=>o+1); }} style={navBtn}>›</button>
+      </div>
+      <div style={{ background:P.card,borderRadius:18,padding:16,boxShadow:"0 2px 10px #7C5CBF15",border:`1px solid ${P.border}` }}>
+        <div style={{ fontWeight:800,fontSize:15,marginBottom:12,color:P.pri }}>共 {filtered.length} 次點班</div>
+        <div style={{ display:"flex",gap:8,marginBottom:16 }}>
+          {SHIFTS.map((s,i)=>(
+            <div key={s} style={{ flex:1,background:SBGS[i],border:`2px solid ${SBDS[i]}`,borderRadius:14,padding:"10px 0",textAlign:"center" }}>
+              <div style={{ fontSize:24,marginBottom:2 }}>{SHIFT_EMOJI[i]}</div>
+              <div style={{ fontSize:22,fontWeight:900,color:SBDS[i] }}>{byShift[s]}</div>
+              <div style={{ fontSize:12,color:P.muted }}>{s}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{ borderRadius:14,overflow:"hidden",border:`1px solid ${P.border}`,marginBottom:14 }}>
+          <div style={{ display:"grid",gridTemplateColumns:"1fr 44px 44px 44px 44px",background:`linear-gradient(90deg,${P.pri},${P.teal})`,color:"#fff",padding:"9px 12px",fontSize:12,fontWeight:700 }}>
+            <span>項目</span><span style={{ textAlign:"center" }}>數量</span><span style={{ textAlign:"center" }}>床用</span><span style={{ textAlign:"center" }}>外借</span><span style={{ textAlign:"center" }}>異常</span>
+          </div>
+          {ITEMS_CONFIG.map((cfg,i)=>{
+            const s=stats[cfg.id];
+            return (
+              <div key={cfg.id} style={{ display:"grid",gridTemplateColumns:"1fr 44px 44px 44px 44px",padding:"9px 12px",fontSize:13,background:i%2===0?P.card:P.bg,borderTop:`1px solid ${P.border}` }}>
+                <span>{cfg.icon} {cfg.label}</span>
+                <span style={{ textAlign:"center",fontWeight:700,color:P.pri }}>{s.totalCnt}</span>
+                <span style={{ textAlign:"center",fontWeight:700,color:P.teal }}>{s.totalBeds}</span>
+                <span style={{ textAlign:"center",fontWeight:700,color:s.totalLoaned>0?P.orange:P.muted }}>{s.totalLoaned||"—"}</span>
+                <span style={{ textAlign:"center",fontWeight:700,color:s.abnormal>0?P.coral:P.mint }}>{s.abnormal>0?`⚠${s.abnormal}`:"✓"}</span>
+              </div>
+            );
+          })}
+        </div>
+        {topBeds.length>0&&(
+          <div style={{ background:P.priL,borderRadius:14,padding:14,border:`1px solid ${P.pri}33`,marginBottom:10 }}>
+            <div style={{ fontWeight:700,fontSize:14,color:P.pri,marginBottom:8 }}>🛏 高頻使用床號 TOP 8</div>
+            <div style={{ display:"flex",flexWrap:"wrap",gap:6 }}>
+              {topBeds.map(([b,c])=><span key={b} style={{ background:P.card,border:`1.5px solid ${P.pri}`,borderRadius:20,padding:"3px 10px",fontSize:13,fontWeight:700,color:P.pri }}>{b} ×{c}</span>)}
+            </div>
+          </div>
+        )}
+        {(()=>{
+          const notes=[]; Object.values(stats).forEach(s=>s.notes.forEach(n=>notes.push({ label:s.label,note:n })));
+          if (!notes.length) return null;
+          return (
+            <div style={{ background:P.amberL,borderRadius:14,padding:14,border:`1px solid ${P.amber}55` }}>
+              <div style={{ fontWeight:700,fontSize:14,color:"#996600",marginBottom:8 }}>📝 備註摘要</div>
+              {notes.map((n,i)=><div key={i} style={{ fontSize:13,marginBottom:4 }}><b>{n.label}：</b>{n.note}</div>)}
+            </div>
+          );
+        })()}
+      </div>
+    </div>
+  );
+}
+
+// ─── HomeTab ──────────────────────────────────────────────────────────────────
+function HomeTab({ records, onAdd, onTabChange }) {
+  const today     = new Date().toISOString().split("T")[0];
+  const todayRecs = records.filter(r=>r.date===today);
+  const doneShifts= todayRecs.map(r=>r.shift);
+  const remaining = SHIFTS.filter(s=>!doneShifts.includes(s));
+  const allDone   = remaining.length===0;
+  return (
+    <div>
+      {allDone?(
+        <div style={{ width:"100%",padding:"26px 0",borderRadius:22,background:"linear-gradient(135deg,#9E9AB5 0%,#B8B5CC 100%)",color:"#fff",textAlign:"center",marginBottom:18,boxShadow:"0 4px 12px #0002",display:"flex",flexDirection:"column",alignItems:"center",gap:6 }}>
+          <span style={{ fontSize:44 }}>✅</span>
+          <span style={{ fontWeight:900,fontSize:22 }}>今日三班已全部完成</span>
+          <span style={{ fontSize:13,opacity:0.85 }}>如需修改請至「紀錄」頁面</span>
+        </div>
+      ):(
+        <button onClick={()=>{ SFX.tap(); onAdd(); }} style={{ width:"100%",padding:"26px 0",borderRadius:22,border:"none",
+          background:`linear-gradient(135deg,${P.pri} 0%,${P.teal} 100%)`,color:"#fff",fontWeight:900,fontSize:24,cursor:"pointer",
+          boxShadow:`0 8px 28px ${P.pri}55`,marginBottom:18,display:"flex",flexDirection:"column",alignItems:"center",gap:6,animation:"pulse 2s infinite" }}>
+          <span style={{ fontSize:48 }}>🧠📋</span>
+          <span>開始點班</span>
+          <span style={{ fontSize:13,fontWeight:500,opacity:0.9,background:"#ffffff30",borderRadius:20,padding:"3px 14px" }}>
+            點此進行點班登記 · 剩餘 {remaining.join("、")}
+          </span>
+        </button>
+      )}
+      <div style={{ background:P.card,borderRadius:18,padding:16,marginBottom:14,boxShadow:"0 2px 12px #7C5CBF18",border:`1px solid ${P.border}` }}>
+        <div style={{ fontWeight:800,fontSize:15,marginBottom:12,color:P.pri }}>🗓️ 今日點班狀況</div>
+        <div style={{ display:"flex",gap:8 }}>
+          {SHIFTS.map((s,i)=>{
+            const done=doneShifts.includes(s),rec=todayRecs.find(r=>r.shift===s);
+            return (
+              <div key={s} style={{ flex:1,borderRadius:14,padding:"14px 6px",textAlign:"center",
+                background:done?SBGS[i]:"#F8F6FF",border:`2.5px solid ${done?SBDS[i]:P.border}`,transition:"all .2s" }}>
+                <div style={{ fontSize:28,marginBottom:4 }}>{done?"✅":SHIFT_EMOJI[i]}</div>
+                <div style={{ fontWeight:700,fontSize:13,color:done?SBDS[i]:P.muted }}>{s}</div>
+                {rec&&<div style={{ fontSize:11,color:P.muted,marginTop:3,background:P.card,borderRadius:10,padding:"2px 6px" }}>{rec.nurse}</div>}
+                {!done&&<div style={{ fontSize:11,color:P.muted,marginTop:3 }}>未完成</div>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14 }}>
+        {[{ id:"history",icon:"📋",label:"查看 / 修改紀錄",bg:P.s0bg,bd:P.s0bd },
+          { id:"report", icon:"📊",label:"週 / 月報表",    bg:P.s1bg,bd:P.s1bd }].map(c=>(
+          <button key={c.id} onClick={()=>{ SFX.nav(); onTabChange(c.id); }} style={{ display:"flex",flexDirection:"column",alignItems:"center",gap:6,padding:"18px 0",borderRadius:16,border:`2px solid ${c.bd}`,background:c.bg,cursor:"pointer" }}>
+            <span style={{ fontSize:28 }}>{c.icon}</span>
+            <span style={{ fontWeight:700,fontSize:13,color:c.bd }}>{c.label}</span>
+          </button>
+        ))}
+      </div>
+      {records.length>0&&(
+        <div style={{ background:P.card,borderRadius:16,padding:14,boxShadow:"0 2px 10px #7C5CBF15",border:`1px solid ${P.border}` }}>
+          <div style={{ fontWeight:700,fontSize:13,color:P.muted,marginBottom:10 }}>⏱️ 最近點班紀錄</div>
+          {[...records].sort((a,b)=>b.createdAt?.localeCompare(a.createdAt)).slice(0,4).map(r=>(
+            <div key={r.id} style={{ display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:`1px solid ${P.border}` }}>
+              <ShiftTag shift={r.shift}/>
+              <span style={{ fontWeight:600,fontSize:14 }}>{r.nurse}</span>
+              <span style={{ fontSize:12,color:P.muted,marginLeft:"auto" }}>{r.date}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      <style>{`@keyframes pulse{0%,100%{box-shadow:0 8px 28px ${P.pri}55}50%{box-shadow:0 8px 36px ${P.teal}77}}`}</style>
+    </div>
+  );
+}
+
+// ─── Skeleton ─────────────────────────────────────────────────────────────────
+function Skeleton() {
+  return (
+    <div style={{ minHeight:"100vh",background:P.bg,fontFamily:"'Noto Sans TC','PingFang TC',system-ui,sans-serif" }}>
+      <div style={{ background:`linear-gradient(90deg,${P.pri},${P.teal})`,color:"#fff",padding:"14px 16px 12px",display:"flex",alignItems:"center",gap:12 }}>
+        <div style={{ flex:1 }}>
+          <div style={{ fontWeight:900,fontSize:18 }}>🧠 8C神外病房－4號車點班</div>
+          <div style={{ fontSize:11,opacity:0.8 }}>共 {ALL_BEDS.length} 床 · 20 間病房</div>
+        </div>
+        <span style={{ fontSize:28,opacity:0.8 }}>🏥</span>
+      </div>
+      <div style={{ padding:14,maxWidth:680,margin:"0 auto" }}>
+        <style>{`@keyframes shimmer{0%{background-position:-400px 0}100%{background-position:400px 0}}.sk{background:linear-gradient(90deg,#EDE9FF 25%,#F5F0FF 50%,#EDE9FF 75%);background-size:800px 100%;animation:shimmer 1.4s infinite linear;border-radius:14px}`}</style>
+        <div className="sk" style={{ height:130,marginBottom:14 }}/>
+        <div className="sk" style={{ height:100,marginBottom:14 }}/>
+        <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14 }}>
+          <div className="sk" style={{ height:80 }}/><div className="sk" style={{ height:80 }}/>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── App ──────────────────────────────────────────────────────────────────────
+function App() {
+  const [tab,       setTab]       = useState("home");
+  const [records,   setRecords]   = useState(null);
+  const [formState, setFormState] = useState(null);
+
+  useEffect(()=>{
+    setRecords(loadRecords());
+  },[]);
+
+  function handleSave(record, isEdit) {
+    const updated = isEdit?(records||[]).map(r=>r.id===record.id?record:r):[record,...(records||[])];
+    setRecords(updated);
+    saveRecords(updated);
+    // 不在這裡跳頁，由 CheckForm submit 在 GAS 同步完後呼叫 onDone 跳頁
+  }
+  function handleDone() {
+    setFormState(null);
+    setTab("history");
+  }
+  function handleDelete(id) {
+    const updated=(records||[]).filter(r=>r.id!==id);
+    setRecords(updated); saveRecords(updated);
+  }
+  function handleEdit(record) { SFX.tap(); setFormState({ editRecord:record }); setTab("home"); }
+
+  if (records===null) return <Skeleton/>;
+
+  const isForm=!!formState;
+  const TABS=[{ id:"home",icon:"🏠",label:"首頁" },{ id:"history",icon:"📋",label:"紀錄" },{ id:"report",icon:"📊",label:"報表" }];
+
+  return (
+    <div style={{ minHeight:"100vh",background:P.bg,fontFamily:"'Noto Sans TC','PingFang TC',system-ui,sans-serif" }}>
+      <div style={{ background:`linear-gradient(90deg,${P.pri},${P.teal})`,color:"#fff",padding:"14px 16px 12px",position:"sticky",top:0,zIndex:100,display:"flex",alignItems:"center",gap:12 }}>
+        {isForm&&<button onClick={()=>{ SFX.tap(); setFormState(null); }} style={{ background:"none",border:"none",color:"#fff",fontSize:26,cursor:"pointer",padding:0 }}>‹</button>}
+        <div style={{ flex:1 }}>
+          <div style={{ fontWeight:900,fontSize:18,letterSpacing:0.5 }}>🧠 8C神外病房－4號車點班</div>
+          <div style={{ fontSize:11,opacity:0.8 }}>共 {ALL_BEDS.length} 床 · 20 間病房</div>
+        </div>
+        <span style={{ fontSize:28,opacity:0.8 }}>🏥</span>
+      </div>
+      <div style={{ padding:14,maxWidth:680,margin:"0 auto",paddingBottom:isForm?0:84 }}>
+        {isForm?(
+          <CheckForm records={records} onSave={handleSave} onDone={handleDone} onCancel={()=>setFormState(null)} editRecord={formState.editRecord||null}/>
+        ):tab==="home"   ?<HomeTab records={records} onAdd={()=>setFormState("new")} onTabChange={setTab}/>
+          :tab==="history"?<History records={records} onDelete={handleDelete} onEdit={handleEdit}/>
+          :<Reports records={records}/>}
+      </div>
+      {!isForm&&(
+        <div style={{ position:"fixed",bottom:0,left:0,right:0,background:P.card,borderTop:`1px solid ${P.border}`,display:"flex",zIndex:100 }}>
+          {TABS.map(t=>(
+            <button key={t.id} onClick={()=>{ SFX.nav(); setTab(t.id); }} style={{ flex:1,padding:"10px 0 12px",border:"none",background:"none",display:"flex",flexDirection:"column",alignItems:"center",gap:2,cursor:"pointer",color:tab===t.id?P.pri:P.muted,borderTop:tab===t.id?`3px solid ${P.pri}`:"3px solid transparent",transition:"all .15s" }}>
+              <span style={{ fontSize:22 }}>{t.icon}</span>
+              <span style={{ fontSize:11,fontWeight:tab===t.id?700:400 }}>{t.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 </body>
 </html>
