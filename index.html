@@ -20,6 +20,7 @@
 <script type="text/babel">
 const { useState, useEffect } = React;
 
+const GAS_URL = "https://script.google.com/macros/s/AKfycbxE6bj8H3B_iHLqIrHAKVyd3Cnr4141kLy9BX-qmPxARs7lyucKbSSXvhh8xv9FOqLD/exec";
 // ─── Storage (localStorage for standalone HTML) ───────────────────────────────
 const STORAGE_KEY = "ward_check_records_v4";
 function loadRecords() {
@@ -461,7 +462,7 @@ function CheckForm({ records, onSave, onDone, onCancel, editRecord }) {
     // ── Step 2: sync to Google Sheets ──
     setSyncing(true);
     try {
-      // Build clean payload for GAS
+      // 這裡建立要傳給 Google Sheets 的乾淨資料
       const payload = {
         nurse: record.nurse,
         date:  record.date,
@@ -471,32 +472,30 @@ function CheckForm({ records, onSave, onDone, onCancel, editRecord }) {
         items: record.items.map(it => {
           const v = it.value;
           const cfg = ITEMS_CONFIG.find(c=>c.id===it.id);
-          const total = cfg?.type==="split"
-            ? (v.count||0)+(v.beds?.length||0)
-            : (v.count||0);
+          
+          // 計算預期上限/應到數
           const expected = cfg?.type==="split"
             ? effPoolMax(cfg, v)
             : effExpected(cfg, v);
+
           return {
-            id:       it.id,
-            label:    it.label,
-            type:     cfg?.type,
-            count:    v.count||0,
-            beds:     v.beds?.join("、")||"",
-            loanCount:v.loanCount||0,
-            loanNote: v.loanNote||"",
-            note:     v.note||"",
-            total,
-            expected,
-            status:   total===expected?"正常":"異常",
+            id:        it.id,
+            label:     it.label,
+            count:     v.count || 0,
+            beds:      v.beds ? v.beds.join("、") : "", // 將床號陣列轉為 "3、5-1" 字串
+            loanCount: v.loanCount || 0,
+            loanNote:  v.loanNote || "",
+            note:      v.note || "",
+            expected:  expected
           };
         }),
       };
 
+      // 📌 正確發送 POST 到 Google Apps Script
       await fetch(GAS_URL, {
         method: "POST",
-        mode: "no-cors",          // GAS 必須用 no-cors，無法讀 response
-        headers: { "Content-Type": "text/plain" },
+        mode: "no-cors", // 採用 no-cors 模式，跨網域防護
+        headers: { "Content-Type": "text/plain" }, // GAS 接收格式建議設為 text/plain 或不設
         body: JSON.stringify(payload),
       });
 
@@ -511,7 +510,6 @@ function CheckForm({ records, onSave, onDone, onCancel, editRecord }) {
       setModal({ type:"warn", title:"雲端同步失敗 ⚠️",
         body:`資料已儲存於本機，但同步試算表時發生錯誤。\n（${err.message}）\n\n可稍後再試，或請通知資訊人員。` });
     }
-  }
 
   const errIds = new Set(shift?validate(items).map(e=>e.id):[]);
 
