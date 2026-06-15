@@ -8,21 +8,25 @@
   <title>8C神外病房－4號車點班</title>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <style>
     *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
-    body{background:#F5F0FF;font-family:'Noto Sans TC','PingFang TC',system-ui,sans-serif;padding:16px;}
+    body{background:#F5F0FF;font-family:'Noto Sans TC','PingFang TC',system-ui,sans-serif;padding:16px;color:#2D2A4A;}
     input,button{font-family:inherit;}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    @keyframes pulse2{0%,100%{opacity:1}50%{opacity:0.4}}
   </style>
 </head>
 <body>
 <div id="root"></div>
-<script type="text/babel">
+
+<script>
+// 使用純 JavaScript (React.createElement) 改寫，徹底解決網頁白屏問題
 const { useState, useEffect } = React;
+const e = React.createElement;
 
 const GAS_URL = "https://script.google.com/macros/s/AKfycbxE6bj8H3B_iHLqIrHAKVyd3Cnr4141kLy9BX-qmPxARs7lyucKbSSXvhh8xv9FOqLD/exec";
-// ─── Storage (localStorage for standalone HTML) ───────────────────────────────
 const STORAGE_KEY = "ward_check_records_v4";
+
 function loadRecords() {
   try { const r = localStorage.getItem(STORAGE_KEY); return r ? JSON.parse(r) : []; }
   catch { return []; }
@@ -31,7 +35,6 @@ function saveRecords(recs) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(recs)); } catch {}
 }
 
-// ─── Bed layout ───────────────────────────────────────────────────────────────
 const TRIPLE_ROOMS = [1, 2, 20, 21];
 const SINGLE_ROOMS = [3, 5, 6, 17, 18, 19, 22];
 const ROOM_CONFIG  = [];
@@ -44,7 +47,6 @@ for (let r = 1; r <= 22; r++) {
 const ALL_BEDS = [];
 ROOM_CONFIG.forEach(({ room, subs }) => subs.forEach(s => ALL_BEDS.push(s ? `${room}-${s}` : `${room}`)));
 
-// ─── Items ────────────────────────────────────────────────────────────────────
 const ITEMS_CONFIG = [
   { id: "blood_glucose", label: "血糖機",     icon: "🩸", type: "count_only", expected: 3, max: 3 },
   { id: "urine_sg",      label: "尿比重計",    icon: "🧪", type: "count_only", expected: 1, max: 1 },
@@ -70,46 +72,34 @@ function itemsFromRecord(rec) {
 }
 
 function effExpected(cfg, v) {
-  if (cfg.type === "count_only" && cfg.expected != null)
-    return Math.max(0, cfg.expected - (v.loanCount || 0));
+  if (cfg.type === "count_only" && cfg.expected != null) return Math.max(0, cfg.expected - (v.loanCount || 0));
   return null;
 }
 function effPoolMax(cfg, v) {
-  if (cfg.type === "split")
-    return Math.max(0, cfg.poolMax - (v.loanCount || 0));
+  if (cfg.type === "split") return Math.max(0, cfg.poolMax - (v.loanCount || 0));
   return cfg.poolMax;
 }
 
-// ─── Shifts ───────────────────────────────────────────────────────────────────
 const SHIFTS      = ["白班", "小夜", "大夜"];
 const SHIFT_PREV  = { "白班": "大夜", "小夜": "白班", "大夜": "小夜" };
 const SHIFT_EMOJI = ["☀️", "🌙", "⭐"];
 
-// ─── Palette ──────────────────────────────────────────────────────────────────
 const P = {
-  bg:"#F5F0FF", card:"#FFFFFF",
-  pri:"#7C5CBF", priL:"#EDE9FF", priD:"#5A3E9B",
-  teal:"#2DB9AA", tealL:"#E0FAF7",
-  coral:"#FF6B6B", coralL:"#FFF0F0",
-  mint:"#51CF66", mintL:"#EBFBEE",
-  amber:"#FCC419", amberL:"#FFF9DB",
-  orange:"#FF922B", orangeL:"#FFF4E6",
-  muted:"#9E9AB5", border:"#E4DEFF",
-  s0bg:"#EAF8FF", s0bd:"#4DABF7",
-  s1bg:"#FFF8E1", s1bd:"#FFA94D",
-  s2bg:"#F0E6FF", s2bd:"#9775FA",
+  bg:"#F5F0FF", card:"#FFFFFF", pri:"#7C5CBF", priL:"#EDE9FF", priD:"#5A3E9B",
+  teal:"#2DB9AA", tealL:"#E0FAF7", coral:"#FF6B6B", coralL:"#FFF0F0",
+  mint:"#51CF66", mintL:"#EBFBEE", amber:"#FCC419", amberL:"#FFF9DB",
+  orange:"#FF922B", orangeL:"#FFF4E6", muted:"#9E9AB5", border:"#E4DEFF",
+  s0bg:"#EAF8FF", s0bd:"#4DABF7", s1bg:"#FFF8E1", s1bd:"#FFA94D", s2bg:"#F0E6FF", s2bd:"#9775FA",
 };
 const SBGS = [P.s0bg, P.s1bg, P.s2bg];
 const SBDS = [P.s0bd, P.s1bd, P.s2bd];
 
-// ─── Audio ────────────────────────────────────────────────────────────────────
 let _audioCtx = null;
 function getCtx() { if (!_audioCtx) _audioCtx = new (window.AudioContext||window.webkitAudioContext)(); return _audioCtx; }
 function beep(freq, type, dur, vol=0.18, delay=0) {
   try {
     const ctx=getCtx(), o=ctx.createOscillator(), g=ctx.createGain();
-    o.connect(g); g.connect(ctx.destination);
-    o.type=type; o.frequency.value=freq;
+    o.connect(g); g.connect(ctx.destination); o.type=type; o.frequency.value=freq;
     const t=ctx.currentTime+delay;
     g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.001,t+dur);
     o.start(t); o.stop(t+dur+0.01);
@@ -129,7 +119,6 @@ const SFX = {
   loan:   ()=>beep(550,"triangle",0.12,0.18),
 };
 
-// ─── Validation ───────────────────────────────────────────────────────────────
 function validate(items) {
   const errors = [];
   ITEMS_CONFIG.forEach(cfg => {
@@ -151,76 +140,64 @@ function validate(items) {
   return errors;
 }
 
-// ─── ShiftTag ─────────────────────────────────────────────────────────────────
 function ShiftTag({ shift }) {
   const i = SHIFTS.indexOf(shift);
-  return <span style={{ background:SBGS[i], color:SBDS[i], border:`1.5px solid ${SBDS[i]}`, borderRadius:20, padding:"2px 10px", fontSize:12, fontWeight:700 }}>{SHIFT_EMOJI[i]} {shift}</span>;
+  return e("span", { style: { background:SBGS[i], color:SBDS[i], border:`1.5px solid ${SBDS[i]}`, borderRadius:20, padding:"2px 10px", fontSize:12, fontWeight:700 } }, `${SHIFT_EMOJI[i]} ${shift}`);
 }
 
-// ─── Modal ────────────────────────────────────────────────────────────────────
 function Modal({ title, body, onClose, type="error" }) {
   const col = type==="error"?P.coral:type==="warn"?P.amber:P.mint;
   const bg  = type==="error"?P.coralL:type==="warn"?P.amberL:P.mintL;
   const ico = type==="error"?"🧠💥":type==="warn"?"⚠️":"🎉";
   useEffect(()=>{ SFX.modal(); },[]);
-  return (
-    <div style={{ position:"fixed",inset:0,background:"#2008",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:24 }}>
-      <div style={{ background:P.card,borderRadius:24,padding:28,maxWidth:400,width:"100%",boxShadow:"0 16px 48px #4004",border:`2px solid ${col}44` }}>
-        <div style={{ textAlign:"center",fontSize:52,marginBottom:8 }}>{ico}</div>
-        <div style={{ fontWeight:800,fontSize:18,color:col,textAlign:"center",marginBottom:14,lineHeight:1.3 }}>{title}</div>
-        <div style={{ background:bg,borderRadius:14,padding:14,marginBottom:18,border:`1px solid ${col}55` }}>
-          {typeof body==="string"?<p style={{ margin:0,fontSize:14,lineHeight:1.9 }}>{body}</p>:body}
-        </div>
-        <button onClick={()=>{ SFX.tap(); onClose(); }} style={{ width:"100%",padding:15,borderRadius:16,border:"none",background:col,color:"#fff",fontWeight:800,fontSize:16,cursor:"pointer" }}>我知道了 👍</button>
-      </div>
-    </div>
+  return e("div", { style: { position:"fixed",inset:0,background:"#2008",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:24 } },
+    e("div", { style: { background:P.card,borderRadius:24,padding:28,maxWidth:400,width:"100%",boxShadow:"0 16px 48px #4004",border:`2px solid ${col}44` } },
+      e("div", { style: { textAlign:"center",fontSize:52,marginBottom:8 } }, ico),
+      e("div", { style: { fontWeight:800,fontSize:18,color:col,textAlign:"center",marginBottom:14,lineHeight:1.3 } }, title),
+      e("div", { style: { background:bg,borderRadius:14,padding:14,marginBottom:18,border:`1px solid ${col}55` } }, 
+        typeof body==="string" ? e("p", { style: { margin:0,fontSize:14,lineHeight:1.9 } }, body) : body
+      ),
+      e("button", { onClick:()=>{ SFX.tap(); onClose(); }, style: { width:"100%",padding:15,borderRadius:16,border:"none",background:col,color:"#fff",fontWeight:800,fontSize:16,cursor:"pointer" } }, "我知道了 👍")
+    )
   );
 }
 
-// ─── ConfirmModal ─────────────────────────────────────────────────────────────
 function ConfirmModal({ title, body, onConfirm, onCancel }) {
   useEffect(()=>{ SFX.modal(); },[]);
-  return (
-    <div style={{ position:"fixed",inset:0,background:"#2008",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:24 }}>
-      <div style={{ background:P.card,borderRadius:24,padding:28,maxWidth:400,width:"100%",boxShadow:"0 16px 48px #4004" }}>
-        <div style={{ textAlign:"center",fontSize:48,marginBottom:8 }}>🗑️</div>
-        <div style={{ fontWeight:800,fontSize:18,color:P.coral,textAlign:"center",marginBottom:12 }}>{title}</div>
-        <p style={{ fontSize:14,color:P.muted,textAlign:"center",marginBottom:20 }}>{body}</p>
-        <div style={{ display:"flex",gap:10 }}>
-          <button onClick={()=>{ SFX.tap(); onCancel(); }} style={{ flex:1,padding:13,borderRadius:14,border:`2px solid ${P.border}`,background:P.card,color:P.muted,fontWeight:700,fontSize:15,cursor:"pointer" }}>取消</button>
-          <button onClick={()=>{ SFX.delete(); onConfirm(); }} style={{ flex:1,padding:13,borderRadius:14,border:"none",background:P.coral,color:"#fff",fontWeight:800,fontSize:15,cursor:"pointer" }}>確定刪除</button>
-        </div>
-      </div>
-    </div>
+  return e("div", { style: { position:"fixed",inset:0,background:"#2008",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:24 } },
+    e("div", { style: { background:P.card,borderRadius:24,padding:28,maxWidth:400,width:"100%",boxShadow:"0 16px 48px #4004" } },
+      e("div", { style: { textAlign:"center",fontSize:48,marginBottom:8 } }, "🗑️"),
+      e("div", { style: { fontWeight:800,fontSize:18,color:P.coral,textAlign:"center",marginBottom:12 } }, title),
+      e("p", { style: { fontSize:14,color:P.muted,textAlign:"center",marginBottom:20 } }, body),
+      e("div", { style: { display:"flex",gap:10 } },
+        e("button", { onClick:()=>{ SFX.tap(); onCancel(); }, style: { flex:1,padding:13,borderRadius:14,border:`2px solid ${P.border}`,background:P.card,color:P.muted,fontWeight:700,fontSize:15,cursor:"pointer" } }, "取消"),
+        e("button", { onClick:()=>{ SFX.delete(); onConfirm(); }, style: { flex:1,padding:13,borderRadius:14,border:"none",background:P.coral,color:"#fff",fontWeight:800,fontSize:15,cursor:"pointer" } }, "確定刪除")
+      )
+    )
   );
 }
 
-// ─── BedPicker ────────────────────────────────────────────────────────────────
 function BedPicker({ selected, onChange, remaining }) {
-  return (
-    <div>
-      <div style={{ fontSize:12,color:P.muted,marginBottom:6,display:"flex",alignItems:"center",gap:6 }}>
-        🛏 選擇使用床號
-        <span style={{ fontWeight:700,color:remaining<=0?P.coral:P.teal,background:remaining<=0?P.coralL:P.tealL,borderRadius:20,padding:"1px 8px",fontSize:11 }}>剩餘額度 {remaining}</span>
-      </div>
-      <div style={{ maxHeight:200,overflowY:"auto",background:P.bg,borderRadius:12,padding:"8px 6px",border:`1px solid ${P.border}` }}>
-        {ROOM_CONFIG.map(({ room, subs })=>(
-          <div key={room} style={{ display:"flex",alignItems:"center",flexWrap:"wrap",gap:4,marginBottom:5 }}>
-            <span style={{ fontSize:11,color:P.muted,width:30,textAlign:"right",flexShrink:0 }}>{room}室</span>
-            {subs.map(s=>{
-              const label=s?`${room}-${s}`:`${room}`;
-              const on=selected.includes(label), dis=!on&&remaining<=0;
-              return (
-                <button key={label} onClick={()=>{ if(dis)return; SFX.bed(); onChange(on?selected.filter(x=>x!==label):[...selected,label]); }}
-                  style={{ minWidth:46,height:34,borderRadius:10,fontSize:12,cursor:dis?"not-allowed":"pointer",
-                    border:`2px solid ${on?P.pri:P.border}`,background:on?P.pri:dis?"#F1EFF8":P.card,
-                    color:on?"#fff":dis?P.muted:"#333",fontWeight:on?700:400,opacity:dis?0.4:1,transition:"all .12s" }}>{label}</button>
-              );
-            })}
-          </div>
-        ))}
-      </div>
-    </div>
+  return e("div", null,
+    e("div", { style: { fontSize:12,color:P.muted,marginBottom:6,display:"flex",alignItems:"center",gap:6 } }, 
+      "🛏 選擇使用床號",
+      e("span", { style: { fontWeight:700,color:remaining<=0?P.coral:P.teal,background:remaining<=0?P.coralL:P.tealL,borderRadius:20,padding:"1px 8px",fontSize:11 } }, `剩餘額度 ${remaining}`)
+    ),
+    e("div", { style: { maxHeight:200,overflowY:"auto",background:P.bg,borderRadius:12,padding:"8px 6px",border:`1px solid ${P.border}` } },
+      ROOM_CONFIG.map(({ room, subs })=>
+        e("div", { key: room, style: { display:"flex",alignItems:"center",flexWrap:"wrap",gap:4,marginBottom:5 } },
+          e("span", { style: { fontSize:11,color:P.muted,width:30,textAlign:"right",flexShrink:0 } }, `${room}室`),
+          subs.map(s=>{
+            const label=s?`${room}-${s}`:`${room}`;
+            const on=selected.includes(label), dis=!on&&remaining<=0;
+            return e("button", { key: label, onClick:()=>{ if(dis)return; SFX.bed(); onChange(on?selected.filter(x=>x!==label):[...selected,label]); },
+              style: { minWidth:46,height:34,borderRadius:10,fontSize:12,cursor:dis?"not-allowed":"pointer",
+                border:`2px solid ${on?P.pri:P.border}`,background:on?P.pri:dis?"#F1EFF8":P.card,
+                color:on?"#fff":dis?P.muted:"#333",fontWeight:on?700:400,opacity:dis?0.4:1,transition:"all .12s" } }, label);
+          })
+        )
+      )
+    )
   );
 }
 
@@ -229,35 +206,22 @@ function cBtn(bg, color, disabled=false) {
     border:`2px solid ${disabled?P.border:P.pri}`,fontWeight:800,fontSize:20,cursor:disabled?"not-allowed":"pointer",lineHeight:1,transition:"all .1s" };
 }
 
-// ─── LoanRow ──────────────────────────────────────────────────────────────────
 function LoanRow({ v, onChange, maxLoan }) {
   const lc = v.loanCount || 0;
   const showNote = lc > 0;
-  return (
-    <div style={{ background:P.orangeL, borderRadius:12, padding:"10px 12px", marginBottom:10, border:`1.5px solid ${P.orange}44` }}>
-      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom: showNote ? 8 : 0 }}>
-        <span style={{ fontSize:14 }}>🔄</span>
-        <span style={{ fontSize:13, fontWeight:700, color:P.orange, flex:1 }}>外借／維修台數</span>
-        <button onClick={()=>{ SFX.loan(); onChange({ ...v, loanCount:Math.max(0,lc-1), loanNote: lc-1===0?"":v.loanNote }); }}
-          style={cBtn(P.card, P.orange, lc===0)}>−</button>
-        <span style={{ fontWeight:900,fontSize:20,minWidth:26,textAlign:"center",color:lc>0?P.orange:P.muted }}>{lc}</span>
-        <button onClick={()=>{ SFX.loan(); onChange({ ...v, loanCount:Math.min(lc+1, maxLoan) }); }}
-          style={cBtn(P.orange, "#fff", lc>=maxLoan)}>+</button>
-      </div>
-      {showNote && (
-        <input
-          value={v.loanNote||""}
-          onChange={e=>onChange({ ...v, loanNote:e.target.value })}
-          placeholder="📋 說明（如：外借加護病房 / 維修中）"
-          style={{ width:"100%",padding:"7px 10px",borderRadius:9,border:`1.5px solid ${P.orange}88`,fontSize:12,
-            boxSizing:"border-box",outline:"none",fontFamily:"inherit",background:"#fff",color:"#5a3000" }}
-        />
-      )}
-    </div>
+  return e("div", { style: { background:P.orangeL, borderRadius:12, padding:"10px 12px", marginBottom:10, border:`1.5px solid ${P.orange}44` } },
+    e("div", { style: { display:"flex", alignItems:"center", gap:8, marginBottom: showNote ? 8 : 0 } },
+      e("span", { style: { fontSize:14 } }, "🔄"),
+      e("span", { style: { fontSize:13, fontWeight:700, color:P.orange, flex:1 } }, "外借／維修台數"),
+      e("button", { onClick:()=>{ SFX.loan(); onChange({ ...v, loanCount:Math.max(0,lc-1), loanNote: lc-1===0?"":v.loanNote }); }, style: cBtn(P.card, P.orange, lc===0) }, "−"),
+      e("span", { style: { fontWeight:900,fontSize:20,minWidth:26,textAlign:"center",color:lc>0?P.orange:P.muted } }, lc),
+      e("button", { onClick:()=>{ SFX.loan(); onChange({ ...v, loanCount:Math.min(lc+1, maxLoan) }); }, style: cBtn(P.orange, "#fff", lc>=maxLoan) }, "+")
+    ),
+    showNote && e("input", { value: v.loanNote||"", onChange: e=>onChange({ ...v, loanNote:e.target.value }), placeholder: "📋 說明（如：外借加護病房 / 維修中）",
+      style: { width:"100%",padding:"7px 10px",borderRadius:9,border:`1.5px solid ${P.orange}88`,fontSize:12,boxSizing:"border-box",outline:"none",background:"#fff",color:"#5a3000" } })
   );
 }
 
-// ─── SplitItemRow ─────────────────────────────────────────────────────────────
 function SplitItemRow({ cfg, value, onChange, hasError }) {
   const v    = value || { count:0, beds:[], loanCount:0, loanNote:"", note:"" };
   const eMax = effPoolMax(cfg, v);
@@ -270,430 +234,16 @@ function SplitItemRow({ cfg, value, onChange, hasError }) {
 
   const statusColor = diff===0?P.mint:P.coral;
   const statusLabel = diff===0?`✓ 已全數交代 ${eMax} 台`:diff>0?`還差 ${diff} 台未交代`:`超出 ${-diff} 台`;
+  const pct = eMax>0?Math.min(tot/eMax,1):tot>0?1:0;
 
-  return (
-    <div style={{ background:hasError?P.coralL:P.card,borderRadius:16,padding:"14px 14px 10px",marginBottom:10,
-      border:`2px solid ${hasError?P.coral:P.border}`,boxShadow:"0 2px 8px #7C5CBF11" }}>
-
-      <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:10 }}>
-        <span style={{ fontSize:22 }}>{cfg.icon}</span>
-        <span style={{ flex:1,fontWeight:700,fontSize:15,color:"#2D2A4A" }}>{cfg.label}</span>
-        <span style={{ fontSize:12,fontWeight:700,padding:"3px 10px",borderRadius:20,
-          background:diff===0?P.mintL:P.coralL,color:statusColor,border:`1px solid ${statusColor}55` }}>
-          {statusLabel}
-        </span>
-      </div>
-
-      <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8 }}>
-        <div style={{ background:P.priL,borderRadius:12,padding:"10px 12px",border:`1px solid ${P.border}` }}>
-          <div style={{ fontSize:12,color:P.pri,fontWeight:700,marginBottom:8 }}>📦 數量（護理站）</div>
-          <div style={{ display:"flex",alignItems:"center",gap:8,justifyContent:"center" }}>
-            <button onClick={()=>{ SFX.minus(); setCount((v.count||0)-1); }} style={cBtn(P.card,P.pri,(v.count||0)===0)}>−</button>
-            <span style={{ fontWeight:900,fontSize:24,minWidth:28,textAlign:"center",color:P.pri }}>{v.count||0}</span>
-            <button onClick={()=>{ SFX.plus();  setCount((v.count||0)+1); }} style={cBtn(P.pri,P.card,bedRem<=0&&(v.count||0)>=eMax)}>+</button>
-          </div>
-          <div style={{ fontSize:11,color:P.muted,textAlign:"center",marginTop:5 }}>台放置護理站</div>
-        </div>
-        <div style={{ background:P.tealL,borderRadius:12,padding:"10px 12px",border:`1px solid ${P.teal}44` }}>
-          <div style={{ fontSize:12,color:P.teal,fontWeight:700,marginBottom:8 }}>🛏 使用中</div>
-          <div style={{ fontWeight:900,fontSize:24,textAlign:"center",color:P.teal,padding:"4px 0" }}>{v.beds?.length||0}</div>
-          <div style={{ fontSize:11,color:P.muted,textAlign:"center",marginTop:5 }}>床（點選床號）</div>
-        </div>
-      </div>
-
-      {(() => {
-        const pct = eMax>0?Math.min(tot/eMax,1):tot>0?1:0;
-        return (
-          <div style={{ marginBottom:10 }}>
-            <div style={{ height:8,background:P.bg,borderRadius:8,overflow:"hidden",border:`1px solid ${P.border}` }}>
-              <div style={{ height:"100%",width:`${pct*100}%`,background:statusColor,borderRadius:8,transition:"width .2s" }}/>
-            </div>
-            <div style={{ fontSize:11,marginTop:4,textAlign:"right",fontWeight:700,color:statusColor }}>
-              {tot} / {eMax} 台 {diff>0?`⚠ 還差 ${diff} 台`:diff<0?`⚠ 超出 ${-diff} 台`:"✓ 全數交代完畢"}
-            </div>
-          </div>
-        );
-      })()}
-
-      <BedPicker selected={v.beds||[]} onChange={setBeds} remaining={bedRem} />
-
-      <div style={{ marginTop:10 }}>
-        <LoanRow v={v} onChange={onChange} maxLoan={cfg.poolMax} />
-      </div>
-
-      <input placeholder="📝 備註（選填）" value={v.note||""} onChange={e=>onChange({ ...v,note:e.target.value })}
-        style={{ width:"100%",marginTop:0,padding:"8px 12px",borderRadius:10,border:`1.5px solid ${P.border}`,
-          fontSize:13,boxSizing:"border-box",outline:"none",background:P.bg,fontFamily:"inherit" }}/>
-    </div>
-  );
-}
-
-// ─── CountOnlyRow ─────────────────────────────────────────────────────────────
-function CountOnlyRow({ cfg, value, onChange, hasError }) {
-  const v   = value || { count:0, loanCount:0, loanNote:"", note:"" };
-  const eff = effExpected(cfg, v);
-  const lc  = v.loanCount||0;
-  const mismatch = eff!=null && (v.count||0)!==eff;
-
-  return (
-    <div style={{ background:hasError?P.coralL:P.card,borderRadius:16,padding:"14px 14px 10px",marginBottom:10,
-      border:`2px solid ${hasError?P.coral:P.border}`,boxShadow:"0 2px 8px #7C5CBF11" }}>
-
-      <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:10 }}>
-        <span style={{ fontSize:22 }}>{cfg.icon}</span>
-        <span style={{ flex:1,fontWeight:700,fontSize:15,color:"#2D2A4A" }}>{cfg.label}</span>
-        {eff!=null && (
-          <span style={{ fontSize:12,fontWeight:700,padding:"3px 10px",borderRadius:20,
-            background:mismatch?P.coralL:P.mintL,color:mismatch?P.coral:P.mint,
-            border:`1px solid ${mismatch?P.coral:P.mint}55` }}>
-            應有 {eff} 台{lc>0?`（外借 ${lc}）`:""}
-          </span>
-        )}
-      </div>
-
-      <div style={{ display:"flex",alignItems:"center",justifyContent:"center",gap:16,padding:"10px 0",marginBottom:8 }}>
-        <button onClick={()=>{ SFX.minus(); onChange({ ...v,count:Math.max(0,(v.count||0)-1) }); }} style={cBtn(P.card,P.pri,(v.count||0)===0)}>−</button>
-        <div style={{ textAlign:"center" }}>
-          <div style={{ fontWeight:900,fontSize:36,color:mismatch?P.coral:P.pri,lineHeight:1 }}>{v.count||0}</div>
-          <div style={{ fontSize:11,color:P.muted,marginTop:4 }}>台（實際在場）</div>
-        </div>
-        <button onClick={()=>{ SFX.plus(); onChange({ ...v,count:Math.min((v.count||0)+1,cfg.max||99) }); }} style={cBtn(P.pri,P.card)}>+</button>
-      </div>
-
-      {eff!=null && (
-        <div style={{ height:8,background:P.bg,borderRadius:8,overflow:"hidden",border:`1px solid ${P.border}`,marginBottom:10 }}>
-          <div style={{ height:"100%",width:`${Math.min((v.count||0)/Math.max(eff,1),1)*100}%`,
-            background:mismatch?P.coral:P.mint,borderRadius:8,transition:"width .2s" }}/>
-        </div>
-      )}
-
-      <LoanRow v={v} onChange={onChange} maxLoan={99} />
-
-      <input placeholder="📝 備註（選填）" value={v.note||""} onChange={e=>onChange({ ...v,note:e.target.value })}
-        style={{ width:"100%",marginTop:6,padding:"8px 12px",borderRadius:10,border:`1.5px solid ${P.border}`,
-          fontSize:13,boxSizing:"border-box",outline:"none",background:P.bg,fontFamily:"inherit" }}/>
-    </div>
-  );
-}
-
-// ─── SyncingOverlay ───────────────────────────────────────────────────────────
-function SyncingOverlay() {
-  return (
-    <div style={{ position:"fixed",inset:0,background:"#2D2A4Acc",zIndex:9998,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:20 }}>
-      <style>{`
-        @keyframes spin{to{transform:rotate(360deg)}}
-        @keyframes pulse2{0%,100%{opacity:1}50%{opacity:0.4}}
-      `}</style>
-      <div style={{ width:64,height:64,border:`6px solid #ffffff33`,borderTop:`6px solid #fff`,borderRadius:"50%",animation:"spin .9s linear infinite" }}/>
-      <div style={{ color:"#fff",fontWeight:800,fontSize:17,animation:"pulse2 1.5s ease-in-out infinite" }}>同步至雲端試算表中…</div>
-      <div style={{ color:"#ffffffaa",fontSize:13 }}>請稍候，勿關閉頁面</div>
-    </div>
-  );
-}
-
-// ─── CheckForm ────────────────────────────────────────────────────────────────
-function CheckForm({ records, onSave, onDone, onCancel, editRecord }) {
-  const today = new Date().toISOString().split("T")[0];
-  const [nurse,   setNurse]  = useState(editRecord?.nurse||"");
-  const [date,    setDate]   = useState(editRecord?.date||today);
-  const [shift,   setShift]  = useState(editRecord?.shift||null);
-  const [items,   setItems]  = useState(editRecord?itemsFromRecord(editRecord):defaultItems());
-  const [modal,   setModal]  = useState(null);
-  const [saving,  setSaving] = useState(false);
-  const [syncing, setSyncing]= useState(false);
-  const [carried, setCarried]= useState(false);
-  const [goAfter, setGoAfter]= useState(false);
-
-  function closeModal() {
-    if (goAfter) { setModal(null); onDone(); }
-    else setModal(null);
-  }
-  const isEdit = !!editRecord;
-
-  function pickShift(s) {
-    SFX.toggle(); setShift(s);
-    if (!isEdit) {
-      const prev = SHIFT_PREV[s];
-      const prevRec = [...records].filter(r=>r.shift===prev).sort((a,b)=>b.createdAt?.localeCompare(a.createdAt))[0];
-      if (prevRec) { setItems(itemsFromRecord(prevRec)); setCarried(true); setTimeout(()=>setCarried(false),3500); }
-    }
-  }
-
-  function handleChange(id, val) { setItems(p=>({ ...p,[id]:val })); }
-
-  async function submit() {
-    if (!nurse.trim()) { SFX.error(); setModal({ type:"error",title:"請填寫護理師姓名",body:"姓名欄位不能空白！" }); return; }
-    if (!shift)        { SFX.error(); setModal({ type:"error",title:"請選擇班別",body:"請先選擇本次點班的班別！" }); return; }
-    const errs = validate(items);
-    if (errs.length) {
-      SFX.error();
-      setModal({ type:"error",title:"數量異常，無法儲存 🧠",
-        body:<ul style={{ margin:0,paddingLeft:18,lineHeight:2,fontSize:14 }}>{errs.map((e,i)=><li key={i} style={{ color:P.coral }}>{e.msg}</li>)}</ul> });
-      return;
-    }
-
-    setSaving(true);
-    const record = {
-      id: isEdit?editRecord.id:Date.now(),
-      date, shift, nurse:nurse.trim(),
-      items: ITEMS_CONFIG.map(c=>({ id:c.id,label:c.label,value:items[c.id]||{ count:0,beds:[],loanCount:0,loanNote:"",note:"" } })),
-      createdAt: isEdit?editRecord.createdAt:new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    await onSave(record, isEdit);
-    SFX.success();
-    setSaving(false);
-
-    setSyncing(true);
-    try {
-      const payload = {
-        nurse: record.nurse,
-        date:  record.date,
-        shift: record.shift,
-        submittedAt: record.updatedAt,
-        isEdit,
-        items: record.items.map(it => {
-          const v = it.value;
-          const cfg = ITEMS_CONFIG.find(c=>c.id===it.id);
-          const expected = cfg?.type==="split" ? effPoolMax(cfg, v) : effExpected(cfg, v);
-
-          return {
-            id:        it.id,
-            label:     it.label,
-            count:     v.count || 0,
-            beds:      v.beds ? v.beds.join("、") : "",
-            loanCount: v.loanCount || 0,
-            loanNote:  v.loanNote || "",
-            note:      v.note || "",
-            expected:  expected
-          };
-        }),
-      };
-
-      await fetch(GAS_URL, {
-        method: "POST",
-        mode: "no-cors", 
-        body: JSON.stringify(payload),
-      });
-
-      setSyncing(false);
-      SFX.success();
-      setGoAfter(true);
-      setModal({ type:"success", title:"雲端同步成功 ☁️✅", body:"點班資料已成功同步至雲端試算表！按確認返回紀錄頁面。" });
-    } catch (err) {
-      setSyncing(false);
-      SFX.error();
-      setModal({ type:"warn", title:"雲端同步失敗 ⚠️", body:`資料已儲存於本機，但同步試算表時發生錯誤。\n（${err.message}）\n\n可稍後再試，或請通知資訊人員。` });
-    }
-  }
-
-  const errIds = new Set(shift?validate(items).map(e=>e.id):[]);
-
-  return (
-    <div style={{ paddingBottom:90 }}>
-      {syncing && <SyncingOverlay/>}
-      {modal && <Modal type={modal.type} title={modal.title} body={modal.body} onClose={closeModal}/>}
-
-      <div style={{ background:`linear-gradient(135deg,${P.pri} 0%,${P.teal} 100%)`,borderRadius:20,padding:"18px 20px",marginBottom:14,color:"#fff",boxShadow:`0 6px 20px ${P.pri}44` }}>
-        <div style={{ fontSize:28,marginBottom:4 }}>{isEdit?"✏️":"🧠"}</div>
-        <div style={{ fontWeight:900,fontSize:20 }}>{isEdit?"修改點班紀錄":"開始點班囉！"}</div>
-        <div style={{ fontSize:12,opacity:0.85,marginTop:2 }}>8C神外病房－4號車 · 共 {ALL_BEDS.length} 床</div>
-      </div>
-
-      <div style={{ background:P.card,borderRadius:18,padding:16,marginBottom:12,boxShadow:"0 2px 12px #7C5CBF18",border:`1px solid ${P.border}` }}>
-        <label style={lbl}>👩‍⚕️ 護理師姓名 <span style={{ color:P.coral }}>*</span></label>
-        <input value={nurse} onChange={e=>setNurse(e.target.value)} onClick={()=>SFX.tap()} placeholder="請輸入姓名" style={inp}/>
-
-        <label style={{ ...lbl,marginTop:12 }}>📅 日期</label>
-        <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={inp}/>
-
-        <label style={{ ...lbl,marginTop:12 }}>⏰ 班別 <span style={{ color:P.coral }}>*</span></label>
-        <div style={{ display:"flex",gap:8,marginTop:6 }}>
-          {SHIFTS.map((s,i)=>(
-            <button key={s} onClick={()=>pickShift(s)} style={{
-              flex:1,padding:"14px 0",borderRadius:14,fontWeight:700,fontSize:15,cursor:"pointer",
-              border:`2.5px solid ${shift===s?SBDS[i]:P.border}`,
-              background:shift===s?SBGS[i]:P.card, color:shift===s?SBDS[i]:P.muted,
-              transition:"all .15s",boxShadow:shift===s?`0 4px 12px ${SBDS[i]}44`:"none",
-            }}>{SHIFT_EMOJI[i]} {s}</button>
-          ))}
-        </div>
-        {carried && (
-          <div style={{ marginTop:10,padding:"9px 14px",background:"#E3FAFC",borderRadius:12,fontSize:13,color:"#0C8599",fontWeight:600,border:"1.5px solid #0C859944" }}>
-            ✨ 已帶入上一班紀錄，請確認後修改
-          </div>
-        )}
-      </div>
-
-      <div style={{ background:P.card,borderRadius:18,padding:"14px 14px 4px",boxShadow:"0 2px 12px #7C5CBF18",marginBottom:14,border:`1px solid ${P.border}` }}>
-        <div style={{ fontWeight:800,fontSize:16,color:P.pri,marginBottom:12,display:"flex",alignItems:"center",gap:8 }}>
-          <span style={{ background:P.priL,borderRadius:10,padding:"4px 10px" }}>📋 點班項目</span>
-          <span style={{ fontSize:12,color:P.muted,fontWeight:500 }}>如有外借請在各設備欄填寫</span>
-        </div>
-        {ITEMS_CONFIG.map(cfg=>
-          cfg.type==="split"
-            ?<SplitItemRow  key={cfg.id} cfg={cfg} value={items[cfg.id]} onChange={v=>handleChange(cfg.id,v)} hasError={errIds.has(cfg.id)}/>
-            :<CountOnlyRow  key={cfg.id} cfg={cfg} value={items[cfg.id]} onChange={v=>handleChange(cfg.id,v)} hasError={errIds.has(cfg.id)}/>
-        )}
-      </div>
-
-      <div style={{ position:"fixed",bottom:0,left:0,right:0,padding:"12px 16px",background:P.card,borderTop:`1px solid ${P.border}`,display:"flex",gap:10,zIndex:50 }}>
-        <button onClick={()=>{ SFX.tap(); onCancel(); }} style={{ flex:1,padding:14,borderRadius:14,border:`2px solid ${P.border}`,background:P.card,color:P.muted,fontWeight:700,fontSize:15,cursor:"pointer" }}>取消</button>
-        <button onClick={submit} disabled={saving||syncing} style={{ flex:2.5,padding:14,borderRadius:14,border:"none",
-          background:shift?`linear-gradient(135deg,${P.pri},${P.teal})`:P.muted,
-          color:"#fff",fontWeight:800,fontSize:16,cursor:(saving||syncing)?"not-allowed":"pointer",
-          opacity:(saving||syncing)?0.7:1,boxShadow:shift?`0 4px 14px ${P.pri}55`:"none" }}>
-          {saving?"儲存中…":syncing?"同步中…":isEdit?"✅ 儲存修改":"✅ 完成點班"}
-        </button>
-      </div>
-    </div>
-  );
-}
-const lbl = { fontSize:13,fontWeight:700,color:P.muted,display:"block" };
-const inp = { width:"100%",padding:"10px 14px",borderRadius:12,marginTop:4,border:`1.5px solid ${P.border}`,fontSize:15,boxSizing:"border-box",outline:"none",fontFamily:"inherit",background:P.bg };
-
-// ─── RecordCard ───────────────────────────────────────────────────────────────
-function RecordCard({ record, onDelete, onEdit }) {
-  const [open,    setOpen]    = useState(false);
-  const [confirm, setConfirm] = useState(false);
-
-  return (
-    <div style={{ background:P.card,borderRadius:18,marginBottom:12,boxShadow:"0 2px 10px #7C5CBF15",overflow:"hidden",border:`1px solid ${P.border}` }}>
-      {confirm && <ConfirmModal title="確定要刪除嗎？" body="刪除後無法復原，請確認。"
-        onConfirm={()=>{ setConfirm(false); onDelete(record.id); }} onCancel={()=>setConfirm(false)}/>}
-
-      <div onClick={()=>{ SFX.tap(); setOpen(o=>!o); }} style={{ padding:"13px 16px",display:"flex",alignItems:"center",gap:10,cursor:"pointer" }}>
-        <div style={{ flex:1 }}>
-          <div style={{ fontWeight:700,fontSize:15,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap" }}>
-            {record.nurse} <ShiftTag shift={record.shift}/>
-            {record.updatedAt&&record.updatedAt!==record.createdAt&&(
-              <span style={{ fontSize:10,color:P.muted,background:P.bg,borderRadius:10,padding:"1px 6px" }}>已修改</span>
-            )}
-          </div>
-          <div style={{ fontSize:12,color:P.muted,marginTop:2,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap" }}>
-            📅 {record.date}
-            {(record.items||[]).filter(it=>(it.value?.loanCount||0)>0).length>0&&(
-              <span style={{ background:P.orangeL,color:P.orange,border:`1px solid ${P.orange}55`,borderRadius:12,padding:"1px 7px",fontSize:11,fontWeight:700 }}>
-                🔄 外借/維修 {(record.items||[]).filter(it=>(it.value?.loanCount||0)>0).length} 項
-              </span>
-            )}
-          </div>
-        </div>
-        <span style={{ color:P.muted,fontSize:18 }}>{open?"▲":"▼"}</span>
-      </div>
-
-      {open && (
-        <div style={{ borderTop:`1px solid ${P.border}`,padding:"12px 16px" }}>
-          {record.items.map(it=>{
-            const v=it.value;
-            const lc=v.loanCount||0;
-            const hasSomething=(v.count||0)>0||(v.beds?.length||0)>0||lc>0||v.note;
-            if (!hasSomething) return null;
-            const cfg=ITEMS_CONFIG.find(c=>c.id===it.id);
-            return (
-              <div key={it.id} style={{ display:"flex",alignItems:"center",gap:6,padding:"7px 0",borderBottom:`1px solid ${P.border}`,flexWrap:"wrap" }}>
-                <span style={{ fontSize:15 }}>{cfg?.icon}</span>
-                <span style={{ fontWeight:700,fontSize:13,minWidth:90 }}>{it.label}</span>
-                {cfg?.type==="count_only"&&(
-                  <span style={{ color:P.pri,fontWeight:700,background:P.priL,borderRadius:10,padding:"2px 9px",fontSize:12 }}>
-                    在場 {v.count||0} 台
-                  </span>
-                )}
-                {cfg?.type==="split"&&(v.count||0)>0&& (
-                  <span style={{ color:P.pri,fontWeight:700,background:P.priL,borderRadius:10,padding:"2px 9px",fontSize:12 }}>
-                    站內 {v.count||0} 台
-                  </span>
-                )}
-                {v.beds && v.beds.length > 0 && (
-                  <span style={{ color:P.teal,fontWeight:700,background:P.tealL,borderRadius:10,padding:"2px 9px",fontSize:12 }}>
-                    使用中: {v.beds.join(', ')}
-                  </span>
-                )}
-                {lc > 0 && (
-                  <span style={{ color:P.orange,fontWeight:700,background:P.orangeL,borderRadius:10,padding:"2px 9px",fontSize:12 }}>
-                    外借/維修 {lc} 台 ({v.loanNote || '無說明'})
-                  </span>
-                )}
-                {v.note && (
-                  <span style={{ color:P.muted,fontSize:12,width:'100%',display:'block',marginTop:2 }}>
-                    💬 備註: {v.note}
-                  </span>
-                )}
-              </div>
-            );
-          })}
-          <div style={{ display:'flex',gap:8,marginTop:12,justifyContent:'flex-end' }}>
-             <button onClick={()=>{ SFX.tap(); onEdit(record); }} style={{ padding:"6px 12px",borderRadius:8,border:`1px solid ${P.pri}`,background:'#fff',color:P.pri,fontSize:13,fontWeight:700,cursor:'pointer' }}>編輯</button>
-             <button onClick={()=>{ SFX.tap(); setConfirm(true); }} style={{ padding:"6px 12px",borderRadius:8,border:'none',background:P.coral,color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer' }}>刪除</button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── 頂層主程式 App (補齊這段網頁才能正常執行) ──────────────────────────────────
-function App() {
-  const [records, setRecords] = useState([]);
-  const [view, setView] = useState("list"); // "list" | "form"
-  const [editRecord, setEditRecord] = useState(null);
-
-  useEffect(() => {
-    setRecords(loadRecords());
-  }, []);
-
-  function handleSave(record, isEdit) {
-    let next;
-    if (isEdit) {
-      next = records.map(r => r.id === record.id ? record : r);
-    } else {
-      next = [record, ...records];
-    }
-    setRecords(next);
-    saveRecords(next);
-  }
-
-  function handleDelete(id) {
-    const next = records.filter(r => r.id !== id);
-    setRecords(next);
-    saveRecords(next);
-  }
-
-  return (
-    <div style={{ maxWidth: 600, margin: "0 auto", paddingBottom: 40 }}>
-      {view === "list" ? (
-        <div>
-          <div style={{ display: "flex", justifyContent: "between", alignItems: "center", marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
-            <h2 style={{ color: P.priD, fontWeight: 900 }}>📋 點班歷史紀錄</h2>
-            <button onClick={() => { SFX.nav(); setEditRecord(null); setView("form"); }} 
-              style={{ padding: "10px 18px", borderRadius: 14, border: "none", background: `linear-gradient(135deg, ${P.pri}, ${P.teal})`, color: "#fff", fontWeight: 800, fontSize: 15, cursor: "pointer", boxShadow: "0 4px 12px rgba(124,92,191,0.3)" }}>
-              ➕ 開始點班
-            </button>
-          </div>
-          
-          {records.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "40px 20px", background: P.card, borderRadius: 18, color: P.muted, border: `1px solid ${P.border}` }}>
-              <p style={{ fontSize: 48, marginBottom: 8 }}>📭</p>
-              <p style={{ fontWeight: 700 }}>目前沒有點班紀錄</p>
-              <p style={{ fontSize: 13, marginTop: 4 }}>點擊右上角「開始點班」建立一筆吧！</p>
-            </div>
-          ) : (
-            records.map(r => (
-              <RecordCard key={r.id} record={r} onDelete={handleDelete} onEdit={(rec) => { SFX.nav(); setEditRecord(rec); setView("form"); }} />
-            ))
-          )}
-        </div>
-      ) : (
-        <CheckForm records={records} onSave={handleSave} onDone={() => setView("list")} onCancel={() => { SFX.nav(); setView("list"); }} editRecord={editRecord} />
-      )}
-    </div>
-  );
-}
-
-// React 18 進入點渲染
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<App />);
-</script>
-</body>
-</html>
+  return e("div", { style: { background:hasError?P.coralL:P.card,borderRadius:16,padding:"14px 14px 10px",marginBottom:10,border:`2px solid ${hasError?P.coral:P.border}`,boxShadow:"0 2px 8px #7C5CBF11" } },
+    e("div", { style: { display:"flex",alignItems:"center",gap:8,marginBottom:10 } },
+      e("span", { style: { fontSize:22 } }, cfg.icon),
+      e("span", { style: { flex:1,fontWeight:700,fontSize:15,color:"#2D2A4A" } }, cfg.label),
+      e("span", { style: { fontSize:12,fontWeight:700,padding:"3px 10px",borderRadius:20,background:diff===0?P.mintL:P.coralL,color:statusColor,border:`1px solid ${statusColor}55` } }, statusLabel)
+    ),
+    e("div", { style: { display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8 } },
+      e("div", { style: { background:P.priL,borderRadius:12,padding:"10px 12px",border:`1px solid ${P.border}` } },
+        e("div", { style: { fontSize:12,color:P.pri,fontWeight:700,marginBottom:8 } }, "📦 數量（護理站）"),
+        e("div", { style: { display:"flex",alignItems:"center",gap:8,justifyContent:"center" } },
+          e("button", { onClick:()=>{ SFX.minus(); setCount((v.count||0)-1); }, style: cBtn(P.card,P.pri,(v.count||0)===0) }, "
