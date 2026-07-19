@@ -260,7 +260,7 @@ function SplitItemRow({ cfg, value, onChange, hasError }) {
     ),
     e("div", { style: { marginBottom:10 } },
       e("div", { style: { height:8,background:P.bg,borderRadius:8,overflow:"hidden",border:`1px solid ${P.border}` } },
-        e("div", { height:"100%",width:`${pct*100}%`,background:statusColor,borderRadius:8,transition:"width .2s" } })
+        e("div", { style: { height:"100%",width:`${pct*100}%`,background:statusColor,borderRadius:8,transition:"width .2s" } })
       ),
       e("div", { style: { fontSize:11,marginTop:4,textAlign:"right",fontWeight:700,color:statusColor } },
         `${tot} / ${eMax} 台 ${diff>0?`⚠ 還差 ${diff} 台`:diff<0?`⚠ 超出 ${-diff} 台`:"✓ 全數交代完畢"}`
@@ -413,7 +413,7 @@ function CheckForm({ records, onSave, onDone, onCancel, editRecord }) {
       )
     ),
     e("div", { style: { position:"fixed",bottom:0,left:0,right:0,padding:"12px 16px",background:P.card,borderTop:`1px solid ${P.border}`,display:"flex",gap:10,zIndex:50 } },
-      e("button", { onClick: ()=>{ SFX.tap(); onCancel(); }, style: { flex:1,padding:14,borderRadius:14,border:`2px solid ${P.border}`,background:P.card,color:P.muted,fontWeight:700,fontSize:15,cursor:"pointer" } }, "取消"),
+      e("button", { onClick: () => { SFX.tap(); onCancel(); }, style: { flex:1,padding:14,borderRadius:14,border:`2px solid ${P.border}`,background:P.card,color:P.muted,fontWeight:700,fontSize:15,cursor:"pointer" } }, "取消"),
       e("button", { onClick: submit, disabled: saving||syncing, style: { flex:2.5,padding:14,borderRadius:14,border:"none",background:shift?`linear-gradient(135deg,${P.pri},${P.teal})`:P.muted,color:"#fff",fontWeight:800,fontSize:16,cursor:(saving||syncing)?"not-allowed":"pointer",opacity:(saving||syncing)?0.7:1,boxShadow:shift?`0 4px 14px ${P.pri}55`:"none" } }, 
         saving?"儲存中…":syncing?"同步中…":isEdit?"✅ 儲存修改":"✅ 完成點班"
       )
@@ -422,7 +422,7 @@ function CheckForm({ records, onSave, onDone, onCancel, editRecord }) {
 }
 
 function RecordCard({ record, onDelete, onEdit }) {
-  const [open,    setOpen]    = useState(false);
+  const [open,   setOpen]   = useState(false);
   const [confirm, setConfirm] = useState(false);
 
   return e("div", { style: { background:P.card,borderRadius:18,marginBottom:12,boxShadow:"0 2px 10px #7C5CBF15",overflow:"hidden",border:`1px solid ${P.border}` } },
