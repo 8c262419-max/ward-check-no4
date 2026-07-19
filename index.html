@@ -147,7 +147,7 @@ function ShiftTag({ shift }) {
 
 function Modal({ title, body, onClose, type="error" }) {
   const col = type==="error"?P.coral:type==="warn"?P.amber:P.mint;
-  const bg  = type==="error"?P.coralL:type==="warn"?P.amberL:P.mintL;
+  const bg   = type==="error"?P.coralL:type==="warn"?P.amberL:P.mintL;
   const ico = type==="error"?"🧠💥":type==="warn"?"⚠️":"🎉";
   useEffect(()=>{ SFX.modal(); },[]);
   return e("div", { style: { position:"fixed",inset:0,background:"#2008",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:24 } },
@@ -260,7 +260,7 @@ function SplitItemRow({ cfg, value, onChange, hasError }) {
     ),
     e("div", { style: { marginBottom:10 } },
       e("div", { style: { height:8,background:P.bg,borderRadius:8,overflow:"hidden",border:`1px solid ${P.border}` } },
-        e("div", { style: { height:"100%",width:`${pct*100}%`,background:statusColor,borderRadius:8,transition:"width .2s" } })
+        e("div", { height:"100%",width:`${pct*100}%`,background:statusColor,borderRadius:8,transition:"width .2s" } })
       ),
       e("div", { style: { fontSize:11,marginTop:4,textAlign:"right",fontWeight:700,color:statusColor } },
         `${tot} / ${eMax} 台 ${diff>0?`⚠ 還差 ${diff} 台`:diff<0?`⚠ 超出 ${-diff} 台`:"✓ 全數交代完畢"}`
@@ -283,7 +283,7 @@ function CountOnlyRow({ cfg, value, onChange, hasError }) {
     e("div", { style: { display:"flex",alignItems:"center",gap:8,marginBottom:10 } },
       e("span", { style: { fontSize:22 } }, cfg.icon),
       e("span", { style: { flex:1,fontWeight:700,fontSize:15,color:"#2D2A4A" } }, cfg.label),
-      eff!=null && e("span", { style: { fontSize:12,fontWeight:700,padding:"3px 10px",borderRadius:20,background:mismatch?P.coralL:P.mintL,color:mismatch?P.coral:P.mint,border:`1px solid ${mismatch?P.coral:P.mint}55` } }, `應有 ${eff} 台${lc>0?`（外借 ${lc}）`:""}`)
+      eff!=null && e("span", { style: { fontSize:12,fontWeight:700,padding:"3px 10px",borderRadius:20,background:mismatch?P.coralL:P.mintL,color:mismatch?P.coral,border:`1px solid ${mismatch?P.coral:P.mint}55` } }, `應有 ${eff} 台${lc>0?`（外借 ${lc}）`:""}`)
     ),
     e("div", { style: { display:"flex",alignItems:"center",justifyContent:"center",gap:16,padding:"10px 0",marginBottom:8 } },
       e("button", { onClick:()=>{ SFX.minus(); onChange({ ...v,count:Math.max(0,(v.count||0)-1) }); }, style: cBtn(P.card,P.pri,(v.count||0)===0) }, "−"),
@@ -315,7 +315,7 @@ const inp = { width:"100%",padding:"10px 14px",borderRadius:12,marginTop:4,borde
 
 function CheckForm({ records, onSave, onDone, onCancel, editRecord }) {
   const today = new Date().toISOString().split("T")[0];
-  const [nurse,   setNurse]  = useState(editRecord?.nurse||"");
+  const [nurse,   setNurse]  = useState(editRecord?.nurse||");
   const [date,    setDate]   = useState(editRecord?.date||today);
   const [shift,   setShift]  = useState(editRecord?.shift||null);
   const [items,   setItems]  = useState(editRecord?itemsFromRecord(editRecord):defaultItems());
@@ -361,6 +361,7 @@ function CheckForm({ records, onSave, onDone, onCancel, editRecord }) {
     SFX.success(); setSaving(false); setSyncing(true);
     try {
       const payload = {
+        sheetName: "4號車", // 已加入：指定同步的試算表標籤名稱
         nurse: record.nurse, date:  record.date, shift: record.shift, submittedAt: record.updatedAt, isEdit,
         items: record.items.map(it => {
           const v = it.value, cfg = ITEMS_CONFIG.find(c=>c.id===it.id);
