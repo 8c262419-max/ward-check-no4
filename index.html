@@ -48,14 +48,14 @@ const ALL_BEDS = [];
 ROOM_CONFIG.forEach(({ room, subs }) => subs.forEach(s => ALL_BEDS.push(s ? `${room}-${s}` : `${room}`)));
 
 const ITEMS_CONFIG = [
-  { id: "blood_glucose", label: "血糖機",     icon: "🩸", type: "count_only", expected: 3, max: 3 },
+  { id: "blood_glucose", label: "血糖機",     icon: "🩸", type: "count_only", expected: 4, max: 4 },
   { id: "urine_sg",      label: "尿比重計",    icon: "🧪", type: "count_only", expected: 1, max: 1 },
-  { id: "imec",          label: "I-MEC",       icon: "🖥️",  type: "split",     poolMax: 6  },
+  { id: "imec",          label: "I-MEC",       icon: "🖥️",  type: "split",      poolMax: 6  },
   { id: "ekg12",         label: "12導程 EKG",  icon: "❤️",  type: "count_only", expected: 1, max: 1 },
-  { id: "ultrasound",    label: "100萬超音波",  icon: "🔊", type: "count_only", expected: 1, max: 1 },
-  { id: "oximeter_pink", label: "Oximeter 粉", icon: "💗", type: "split",     poolMax: 3  },
-  { id: "oximeter_blue", label: "Oximeter 藍", icon: "💙", type: "split",     poolMax: 2  },
-  { id: "syringe_pump",  label: "空針幫浦",    icon: "💉", type: "split",     poolMax: 1  },
+  { id: "ultrasound",    label: "100萬超音波", icon: "🔊", type: "count_only", expected: 1, max: 1 },
+  { id: "oximeter_pink", label: "Oximeter 粉", icon: "💗", type: "split",      poolMax: 3  },
+  { id: "oximeter_blue", label: "Oximeter 藍", icon: "💙", type: "split",      poolMax: 2  },
+  { id: "syringe_pump",  label: "空針幫浦",    icon: "💉", type: "split",      poolMax: 1  },
 ];
 
 function defaultItems() {
