@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
   <title>8C神外病房－4號車點班</title>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -35,6 +35,14 @@ function saveRecords(recs) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(recs)); } catch {}
 }
 
+// 取得台灣本地時間的當天日期 (YYYY-MM-DD)
+const getLocalDateString = () => {
+  const now = new Date();
+  const offset = now.getTimezoneOffset() * 60000;
+  const localDate = new Date(now.getTime() - offset);
+  return localDate.toISOString().split("T")[0];
+};
+
 const TRIPLE_ROOMS = [1, 2, 20, 21];
 const SINGLE_ROOMS = [3, 5, 6, 17, 18, 19, 22];
 const ROOM_CONFIG  = [];
@@ -50,7 +58,7 @@ ROOM_CONFIG.forEach(({ room, subs }) => subs.forEach(s => ALL_BEDS.push(s ? `${r
 const ITEMS_CONFIG = [
   { id: "blood_glucose", label: "血糖機",     icon: "🩸", type: "count_only", expected: 4, max: 4 },
   { id: "urine_sg",      label: "尿比重計",    icon: "🧪", type: "count_only", expected: 1, max: 1 },
-  { id: "imec",          label: "I-MEC",       icon: "🖥️",  type: "split",      poolMax: 6  },
+  { id: "imec",          label: "I-MEC",        icon: "🖥️",  type: "split",      poolMax: 6  },
   { id: "ekg12",         label: "12導程 EKG",  icon: "❤️",  type: "count_only", expected: 1, max: 1 },
   { id: "ultrasound",    label: "100萬超音波", icon: "🔊", type: "count_only", expected: 1, max: 1 },
   { id: "oximeter_pink", label: "Oximeter 粉", icon: "💗", type: "split",      poolMax: 3  },
@@ -314,16 +322,16 @@ const lbl = { fontSize:13,fontWeight:700,color:P.muted,display:"block" };
 const inp = { width:"100%",padding:"10px 14px",borderRadius:12,marginTop:4,border:`1.5px solid ${P.border}`,fontSize:15,boxSizing:"border-box",outline:"none",background:P.bg };
 
 function CheckForm({ records, onSave, onDone, onCancel, editRecord }) {
-  const today = new Date().toISOString().split("T")[0];
+  const today = getLocalDateString();
   const [nurse,   setNurse]   = useState(editRecord?.nurse || "");
   const [date,    setDate]    = useState(editRecord?.date || today);
   const [shift,   setShift]   = useState(editRecord?.shift || null);
   const [items,   setItems]   = useState(editRecord?itemsFromRecord(editRecord):defaultItems());
   const [modal,   setModal]   = useState(null);
-  const [saving,  setSaving] = useState(false);
-  const [syncing, setSyncing]= useState(false);
-  const [carried, setCarried]= useState(false);
-  const [goAfter, setGoAfter]= useState(false);
+  const [saving,  setSaving]  = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [carried, setCarried] = useState(false);
+  const [goAfter, setGoAfter] = useState(false);
 
   function closeModal() { if (goAfter) { setModal(null); onDone(); } else setModal(null); }
   const isEdit = !!editRecord;
@@ -361,7 +369,7 @@ function CheckForm({ records, onSave, onDone, onCancel, editRecord }) {
     SFX.success(); setSaving(false); setSyncing(true);
     try {
       const payload = {
-        sheetName: "4號車", // 已加入：指定同步的試算表標籤名稱
+        sheetName: "4號車",
         nurse: record.nurse, date:  record.date, shift: record.shift, submittedAt: record.updatedAt, isEdit,
         items: record.items.map(it => {
           const v = it.value, cfg = ITEMS_CONFIG.find(c=>c.id===it.id);
